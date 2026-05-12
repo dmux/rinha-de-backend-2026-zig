@@ -1,0 +1,7 @@
+{
+    "participants": ["Rafael Sales"],
+    "social": ["https://github.com/dmux", "https://www.linkedin.com/in/rafaelsales"],
+    "source-code-repo": "https://github.com/dmux/rinha-de-backend-2026-zig",
+    "stack": ["zig", "nginx", "docker"],
+    "open_to_work": false
+}
