@@ -1,0 +1,21 @@
+# Zig build artifacts
+.zig-cache/
+zig-out/
+
+# Generated binary index files (large, rebuilt at Docker build time)
+*.bin
+*.bak
+
+# Large data files (not versioned)
+test-data.json
+resources/references.json.gz
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.claude

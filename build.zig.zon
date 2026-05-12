@@ -1,0 +1,19 @@
+.{
+    .name = .vector_based_fraud_detection_api,
+    .version = "0.1.0",
+    .fingerprint = 0x2402187652d5b3fe, // Updated fingerprint
+    .dependencies = .{
+        .httpz = .{
+            .url = "https://github.com/karlseguin/http.zig/archive/master.tar.gz",
+            .hash = "httpz-0.0.0-PNVzrJUWCADf96eygXxMPMSWJ-SMNkGDB1B6BUEP7dZZ", // Correct hash format for 0.16.0
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "tools",
+        "LICENSE",
+        "README.md",
+    },
+}
