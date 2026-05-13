@@ -279,7 +279,7 @@ fn writeIndex(
         .version = 2, // version 2 = f16 vector storage
         .n_vectors = @intCast(vecs.len),
         .n_centroids = K,
-        .nprobe = 50,
+        .nprobe = 15,
     };
     try w.writeAll(std.mem.asBytes(&header));
 

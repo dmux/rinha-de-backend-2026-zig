@@ -86,7 +86,7 @@ pub fn main(init: std.process.Init) !void {
 
     var server = try httpz.Server(*AppState).init(io, allocator, .{
         .address = address,
-        .thread_pool = .{ .count = 2 },
+        .thread_pool = .{ .count = 6 },
         .request = .{ .max_body_size = 8192 },
     }, &state);
     defer server.deinit();
