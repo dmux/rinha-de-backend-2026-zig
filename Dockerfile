@@ -28,4 +28,4 @@ COPY --from=preprocessor /data/ivf_index.bin /data/ivf_index.bin
 COPY --from=zig-builder /app/zig-out/bin/fraud-api /fraud-api
 COPY resources/mcc_risk.json /resources/mcc_risk.json
 EXPOSE 8080
-CMD ["/fraud-api", "--index", "/data/ivf_index.bin", "--mcc-risk", "/resources/mcc_risk.json", "--port", "8080"]
+CMD ["sh", "-c", "umask 000 && exec /fraud-api --index /data/ivf_index.bin --mcc-risk /resources/mcc_risk.json --port 8080"]
