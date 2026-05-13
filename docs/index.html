@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rinha de Backend 2026 — dmux-zig</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/night.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css" />
+  <style>
+    :root {
+      --accent: #f7a41d;
+      --accent2: #6ee7b7;
+      --dim: #94a3b8;
+      --red: #f87171;
+      --bg-card: #1e293b;
+    }
+    .reveal { font-size: 1.75rem; }
+    .reveal h1 { font-size: 2.2rem; color: var(--accent); letter-spacing: -0.02em; }
+    .reveal h2 { font-size: 1.8rem; color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 0.2em; margin-bottom: 0.6em; }
+    .reveal h3 { font-size: 1.2rem; color: var(--accent2); margin-bottom: 0.4em; }
+    .reveal p, .reveal li { line-height: 1.6; }
+    .reveal li { margin-bottom: 0.35em; }
+    .reveal .small { font-size: 0.72rem; color: var(--dim); }
+    .reveal .mono { font-family: monospace; background: #1e293b; padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.88em; }
+    .tag { display: inline-block; padding: 0.15em 0.6em; border-radius: 4px; font-size: 0.7em; font-weight: bold; vertical-align: middle; margin-left: 0.3em; }
+    .tag-ok  { background: #065f46; color: #6ee7b7; }
+    .tag-bad { background: #7f1d1d; color: #fca5a5; }
+    .tag-warn{ background: #78350f; color: #fcd34d; }
+    .two-col   { display: grid; grid-template-columns: 1fr 1fr;    gap: 1.4em; text-align: left; }
+    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1em; text-align: left; }
+    .card { background: var(--bg-card); border: 1px solid #334155; border-radius: 8px; padding: 0.8em 1em; }
+    .card h3 { margin-top: 0; }
+    .formula { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 0.5em 1em; font-family: monospace; font-size: 0.82em; }
+    .step { display: flex; align-items: center; gap: 0.6em; margin-bottom: 0.5em; }
+    .step-num { min-width: 2em; height: 2em; border-radius: 50%; background: var(--accent); color: #000; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 0.85em; flex-shrink: 0; }
+    .step-body { flex: 1; }
+    .arrow-r { color: var(--accent); font-size: 1.3em; flex-shrink: 0; }
+    table { font-size: 0.83em; border-collapse: collapse; width: 100%; }
+    table th { background: #1e293b; color: var(--accent2); padding: 0.4em 0.8em; border: 1px solid #334155; }
+    table td { padding: 0.4em 0.8em; border: 1px solid #334155; }
+    .hl-row { background: #1a2e1a; color: var(--accent2); }
+    .reveal section { padding: 0 1.8em; }
+    .reveal .slides section { top: auto !important; }
+    .zig-logo { color: #f7a41d; font-weight: bold; }
+    .dim-text { color: var(--dim); }
+    pre code { font-size: 0.82em !important; }
+    .callout { border-left: 3px solid var(--accent); padding-left: 0.8em; margin: 0.6em 0; }
+    .callout-ok  { border-color: var(--accent2); }
+    .callout-bad { border-color: var(--red); }
+    .metric { font-size: 2.4rem; font-weight: bold; color: var(--accent); line-height: 1; }
+    .metric-sm { font-size: 0.78rem; color: var(--dim); margin-top: 0.2em; }
+    .cpu-bar { font-family: monospace; font-size: 0.78rem; background: #1e293b; padding: 0.8em 1em; border-radius: 6px; }
+    .pipe { font-family: monospace; font-size: 0.8rem; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 1em 1.4em; line-height: 2; }
+    .pipe-step  { color: #f7a41d; }
+    .pipe-time  { color: #475569; }
+    .pipe-note  { color: #64748b; font-size: 0.85em; padding-left: 1.5em; display: block; line-height: 1.4; margin-top: -0.5em; margin-bottom: 0.3em; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ════════════════════ CAPA ════════════════════ -->
+<section>
+  <div style="padding: 1.5em 0;">
+    <div style="font-size:0.8rem; color:var(--dim); letter-spacing:0.15em; text-transform:uppercase;">Rinha de Backend 2026</div>
+    <h1 style="font-size:2.6rem; margin:0.3em 0 0.2em;">API de Detecção de Fraude</h1>
+    <div style="font-size:1.05rem; color:var(--accent2); margin-bottom:1.5em;">
+      Como construir um buscador de vizinhos em Zig para 3 milhões de vetores em 150 MB e &lt;1ms
+    </div>
+    <div class="formula" style="display:inline-block; text-align:left; min-width:420px;">
+      Zig 0.16 · IVF K-Means++ · SIMD AVX2 · f16 · Unix Sockets
+    </div>
+    <div style="margin-top:1.5em; font-size:0.8rem; color:var(--dim);">
+      <strong style="color:#e2e8f0;">Rafael Sales</strong> · github.com/dmux
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ O PROBLEMA ════════════════════ -->
+<section>
+  <h2>O Problema</h2>
+  <div class="two-col">
+    <div>
+      <p>Dado uma transação com ~14 atributos, decidir em <strong style="color:var(--accent);">millisegundos</strong> se é fraude.</p>
+      <p>A abordagem: comparar com <strong>3 milhões de transações históricas</strong> rotuladas (fraude / legítima) e ver quais as 5 mais parecidas.</p>
+      <p>Se ≥ 3 das 5 são fraudes → nega.</p>
+      <div class="callout" style="margin-top:0.8em;">
+        <p style="margin:0;"><strong>k-Nearest Neighbors</strong> — algoritmo de classificação por votação dos vizinhos mais próximos.</p>
+      </div>
+    </div>
+    <div>
+      <h3>Restrições de hardware</h3>
+      <ul>
+        <li>2 instâncias da API: <strong>0,45 CPU · 150 MB cada</strong></li>
+        <li>Nginx: 0,10 CPU · 50 MB</li>
+        <li>Total: 1 CPU / 350 MB</li>
+      </ul>
+      <h3 style="margin-top:0.8em;">Fórmula de score</h3>
+      <div class="formula">
+        score_p99 = 1000 × log₁₀(1000 / p99_ms)<br>
+        score_det = 1000 × log₁₀(1/ε) − 300 × log₁₀(1+E)<br>
+        <span style="color:var(--accent);">total (máx) = 3000 + 3000 = 6000 pts</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ IDEIA CENTRAL ════════════════════ -->
+<section>
+  <h2>A Ideia Central: Transação como Vetor</h2>
+  <p>Para comparar transações matematicamente, convertemos cada uma em um <strong>vetor de 14 números</strong> normalizados entre 0 e 1 (−1 para campos ausentes).</p>
+
+  <table>
+    <tr><th>v[i]</th><th>Atributo</th><th>Normalização</th><th>Sinal de fraude</th></tr>
+    <tr><td>0</td><td>Valor da transação</td><td>amount / 10.000</td><td>Compras muito altas</td></tr>
+    <tr><td>1</td><td>Parcelas</td><td>installments / 12</td><td>Parcelamentos extremos</td></tr>
+    <tr><td>2</td><td>Razão vs. média do cliente</td><td>(amount/avg) / 10</td><td>5× acima do padrão = suspeito</td></tr>
+    <tr><td>3</td><td>Hora UTC</td><td>hour / 23</td><td>Madrugada tem perfil distinto</td></tr>
+    <tr><td>4</td><td>Dia da semana</td><td>dow / 6</td><td>Final de semana vs. dia útil</td></tr>
+    <tr><td>5</td><td>Min. desde última transação</td><td>min / 1440 · −1 se ausente</td><td>Burst: muitas tx em pouco tempo</td></tr>
+    <tr><td>6</td><td>Dist. da última transação</td><td>km / 1000 · −1 se ausente</td><td>SP → NY em 10 min = impossível</td></tr>
+    <tr><td>7</td><td>Distância de casa</td><td>km / 1000</td><td>3.000 km longe = suspeito</td></tr>
+    <tr><td>8</td><td>Txs nas últimas 24h</td><td>count / 20</td><td>Burst de transações</td></tr>
+    <tr><td>9–11</td><td>Online · Cartão presente · Comerciante novo</td><td>0 ou 1</td><td>Flags de risco diretos</td></tr>
+    <tr><td>12</td><td>Risco do MCC</td><td>tabela mcc_risk.json</td><td>Jogos, cripto = alto risco</td></tr>
+    <tr><td>13</td><td>Ticket médio do comerciante</td><td>avg / 10.000</td><td>Compra muito acima do padrão do MCC</td></tr>
+  </table>
+
+  <p class="small" style="margin-top:0.4em;">A distância L2 entre dois vetores mede o quão "parecidas" são as transações no espaço de features.</p>
+</section>
+
+<!-- ════════════════════ POR QUE ZIG ════════════════════ -->
+<section>
+  <section>
+    <h2>Por que <span class="zig-logo">Zig</span>?</h2>
+    <p>O gargalo é computacional puro: calcular distâncias L2 para centenas de milhares de vetores em &lt;1ms. Precisamos de:</p>
+    <div class="three-col" style="margin-top:0.8em;">
+      <div class="card">
+        <h3>Sem GC</h3>
+        <p>Qualquer pausa de garbage collection — mesmo 2ms — destrói o score_p99. Go, Java, e runtimes JIT são inviáveis.</p>
+      </div>
+      <div class="card">
+        <h3>Controle de memória</h3>
+        <p>Com 150 MB de limite, precisamos saber exatamente quanto cada estrutura consome — sem surpresas do runtime.</p>
+      </div>
+      <div class="card">
+        <h3>SIMD nativo</h3>
+        <p>Zig expõe vetores SIMD como tipos de primeira classe. O compilador emite AVX2/FMA/F16C sem bibliotecas externas.</p>
+      </div>
+    </div>
+    <div class="callout" style="margin-top:1em;">
+      <p style="margin:0;">Em C seria necessário escrever intrinsics manualmente (<span class="mono">_mm256_fmadd_ps</span>). Em Zig, escreve-se código idiomático e o compilador faz a vetorização.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="zig-logo">Zig</span>: Alocadores Explícitos</h2>
+    <p>Em Zig, <strong>não existe alocação implícita</strong>. Toda função que aloca memória recebe um <span class="mono">std.mem.Allocator</span> como parâmetro.</p>
+    <pre><code class="language-zig" data-trim>
+// Em Go: make([]float32, n)  ← runtime decide onde e quando
+// Em Zig: é explícito — você escolhe o alocador e gerencia o tempo de vida
+
+pub fn initFromFile(allocator: std.mem.Allocator, path: []const u8) !IvfStore {
+    var store = IvfStore{};
+
+    // Alocamos exatamente o necessário — sem surpresas de tamanho
+    store.vectors = try allocator.alloc([14]f16, n_vectors);
+    store.labels  = try allocator.alloc(u8,      n_vectors);
+    store.centroids = try allocator.alloc([14]f32, n_clusters);
+
+    // Ler direto do arquivo para a memória já alocada (sem buffer intermediário)
+    try reader.readSliceAll(std.mem.sliceAsBytes(store.vectors));
+    return store;
+}
+    </code></pre>
+    <div class="callout callout-ok">
+      <p style="margin:0;">Isso elimina o pico de memória causado por um buffer temporário de leitura — crítico para caber em 150 MB.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="zig-logo">Zig</span>: Tipos de Vetor SIMD</h2>
+    <p>O maior diferencial de Zig para este projeto: vetores SIMD como tipos nativos da linguagem.</p>
+    <div class="two-col">
+      <div>
+        <h3>Declaração</h3>
+        <pre><code class="language-zig" style="font-size:0.8em;" data-trim>
+// Um vetor de 8 floats processado
+// em paralelo por AVX2
+const v: @Vector(8, f32) = undefined;
+
+// Splat: preenche todos os lanes
+const zeros = @splat(@as(f32, 0.0));
+
+// Operações element-wise compilam
+// para instruções vetoriais únicas
+const sum = a + b;         // VADDPS
+const prod = a * b;        // VMULPS
+const diff = a - b;        // VSUBPS
+        </code></pre>
+      </div>
+      <div>
+        <h3>Reduce e Select</h3>
+        <pre><code class="language-zig" style="font-size:0.8em;" data-trim>
+// @reduce colapsa o vetor para um scalar
+// Emite VHADDPS + VEXTRACTF128
+const total = @reduce(.Add, v * v);
+
+// @select é um blend condicional
+// Emite VBLENDVPS (sem branch!)
+const mask: @Vector(8, bool) = a > b;
+const result = @select(f32, mask, a, b);
+
+// Conversão f16→f32 automática
+// com hardware F16C (VCVTPH2PS)
+const f16v: @Vector(14, f16) = data.*;
+const f32v: @Vector(14, f32) = f16v;
+        </code></pre>
+      </div>
+    </div>
+    <p class="small">Com <span class="mono">-Dtarget_cpu=haswell</span>, o compilador emite <span class="mono">VCVTPH2PS</span>, <span class="mono">VFMADD231PS</span> e <span class="mono">VHADDPS</span> automaticamente.</p>
+  </section>
+
+  <section>
+    <h2>Distância L2 em <span class="zig-logo">Zig</span> — Código Real</h2>
+    <pre><code class="language-zig" data-trim>
+fn l2Distance(query: *const [14]f32, stored: *const [14]f16) f32 {
+    // Converte f16 → f32 em hardware (F16C: VCVTPH2PS, ~1 ciclo)
+    const q: @Vector(14, f32) = query.*;
+    const v: @Vector(14, f32) = stored.*;  // conversão implícita f16→f32
+
+    // Máscara: −1.0 indica campo ausente em qualquer um dos dois vetores
+    const absent_q = q < @splat(0.0);
+    const absent_v = v < @splat(0.0);
+    const absent   = absent_q | absent_v;
+
+    // Zera dimensões ausentes (blend sem branch — VBLENDVPS)
+    const qm = @select(f32, absent, @splat(0.0), q);
+    const vm = @select(f32, absent, @splat(0.0), v);
+
+    // Distância L2: ||q - v||²  (AVX2 + FMA)
+    const diff = qm - vm;
+    return @reduce(.Add, diff * diff);
+}
+    </code></pre>
+    <p class="small">14 dimensões processadas em <strong>2 iterações AVX2</strong> (8 lanes × 2). Sem loops, sem branches no caminho crítico.</p>
+  </section>
+</section>
+
+<!-- ════════════════════ O PROBLEMA DO BRUTE FORCE ════════════════════ -->
+<section>
+  <h2>Por que Busca Exata é Inviável</h2>
+  <div class="two-col">
+    <div>
+      <h3>Brute-force</h3>
+      <p>Calcular L2 para <strong>todos os 3 milhões</strong> de vetores a cada request.</p>
+      <div class="formula" style="margin:0.6em 0; color:var(--red);">
+        3.000.000 × 14 floats × 4 bytes = <strong>168 MB</strong><br>
+        só para armazenar — sem nem computar
+      </div>
+      <p>Com 450 req/s por instância e 0,45 CPU:</p>
+      <div class="formula" style="color:var(--red);">
+        3M comparações × ~5 ns cada = <strong>~15 ms por request</strong><br>
+        p99 impossível de chegar em 1ms
+      </div>
+    </div>
+    <div>
+      <h3>A solução: indexar</h3>
+      <p>Em vez de comparar com todos, dividir o espaço de vetores em <strong>regiões</strong> (clusters) e buscar só nas regiões mais próximas da query.</p>
+      <div class="formula" style="margin:0.6em 0; color:var(--accent2);">
+        1000 clusters → busca nos 50 mais próximos<br>
+        ~150.000 vetores por request<br>
+        <strong>20× menos comparações</strong>
+      </div>
+      <p>Isso é o <strong>IVF — Inverted File Index</strong>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ IVF ════════════════════ -->
+<section>
+  <section>
+    <h2>IVF — Inverted File Index</h2>
+    <p>O índice é construído em pré-processamento (build time). Em runtime, só fazemos lookups.</p>
+
+    <div style="display:flex; gap:0.8em; align-items:stretch; margin-top:0.8em;">
+      <div class="card" style="flex:1;">
+        <h3>① Construção (offline)</h3>
+        <div class="step"><div class="step-num">1</div><div class="step-body">Rodar <strong>K-Means++</strong> nos 3M vetores para encontrar K=1000 centroides que "resumem" o espaço</div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body">Atribuir cada vetor ao centroide mais próximo → <strong>lista invertida</strong> por cluster</div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body">Salvar no formato binário: centroides + vetores ordenados por cluster</div></div>
+      </div>
+      <div class="arrow-r" style="align-self:center;">→</div>
+      <div class="card" style="flex:1;">
+        <h3>② Query (online, &lt;1ms)</h3>
+        <div class="step"><div class="step-num">1</div><div class="step-body">Calcular L2 para os 1000 centroides (SIMD rápido, sem RAM fria)</div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-body">Selecionar os <span class="mono">nprobe=50</span> clusters mais próximos</div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-body">Varrer ~150k vetores desses clusters com AVX2, manter top-5 via min-heap</div></div>
+        <div class="step"><div class="step-num">4</div><div class="step-body">Votar: fraudes / 5 → <span class="mono">fraud_score</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>K-Means++ — Por que Importa</h2>
+    <p>K-Means encontra K centroides que minimizam a distância dos vetores ao seu centroide. A qualidade dos centroides determina o <strong>recall do IVF</strong>.</p>
+
+    <div class="two-col">
+      <div>
+        <h3>K-Means vanilla</h3>
+        <ul>
+          <li>Inicializa K centroides <em>aleatoriamente</em></li>
+          <li>Pode começar com centroides agrupados na mesma região</li>
+          <li>Converge para mínimos locais ruins</li>
+          <li>Clusters desbalanceados → recall baixo</li>
+        </ul>
+        <div class="formula callout-bad" style="margin-top:0.6em;">
+          Exemplo ruim: 3 centroides em SP, nenhum no RJ
+        </div>
+      </div>
+      <div>
+        <h3>K-Means++</h3>
+        <ul>
+          <li>1º centroide: aleatório</li>
+          <li>Cada centroide seguinte: escolhido com probabilidade ∝ <strong>d²</strong> ao centroide mais próximo já escolhido</li>
+          <li>Forçosamente distribui pelos extremos do espaço</li>
+          <li>Convergência mais rápida e estável</li>
+        </ul>
+        <div class="formula callout-ok" style="margin-top:0.6em; color:var(--accent2);">
+          100 iterações K-Means++: E=7 (vs E=18 com 50 iter.)
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>K-Means++ em Zig — Inicialização</h2>
+    <pre><code class="language-zig" data-trim>
+// Escolher novo centroide com probabilidade ∝ d²
+// (algoritmo D² sampling do K-Means++)
+fn sampleNextCentroid(
+    vectors: []const [14]f16,
+    centroids: []const [14]f32,
+    rng: std.Random,
+) usize {
+    // Calcular d² de cada vetor ao centroide mais próximo
+    var total_weight: f64 = 0;
+    var weights = try allocator.alloc(f64, vectors.len);
+    for (vectors, 0..) |*v, i| {
+        var min_dist: f32 = std.math.floatMax(f32);
+        for (centroids) |*c| min_dist = @min(min_dist, l2Distance(c, v));
+        weights[i] = min_dist * min_dist;   // d²
+        total_weight += weights[i];
+    }
+
+    // Amostra aleatória ponderada — vetores distantes têm maior chance
+    var r = rng.float(f64) * total_weight;
+    for (weights, 0..) |w, i| {
+        r -= w;
+        if (r <= 0) return i;   // ← este vetor vira o próximo centroide
+    }
+    return vectors.len - 1;
+}
+    </code></pre>
+  </section>
+</section>
+
+<!-- ════════════════════ f16 ════════════════════ -->
+<section>
+  <section>
+    <h2>Por que f16? O Problema da Quantização</h2>
+    <p>Com 3M vetores × 14 dimensões, o formato de armazenamento importa muito para RAM <em>e</em> para precisão.</p>
+
+    <table style="margin-top:0.6em;">
+      <tr>
+        <th>Formato</th>
+        <th>Bits</th>
+        <th>Passo mínimo</th>
+        <th>3M × 14 (RAM)</th>
+        <th>E medido</th>
+        <th>Viável?</th>
+      </tr>
+      <tr>
+        <td>u8</td><td>8</td><td>1/254 ≈ 0,004</td><td>42 MB</td>
+        <td style="color:var(--red);">158 <small>(e piora!)</small></td>
+        <td class="tag tag-bad">✗ phantom neighbors</td>
+      </tr>
+      <tr class="hl-row">
+        <td><strong>f16</strong></td><td><strong>16</strong></td><td><strong>~0,001</strong></td><td><strong>83 MB</strong></td>
+        <td style="color:var(--accent2);"><strong>7</strong></td>
+        <td class="tag tag-ok">✓ escolhido</td>
+      </tr>
+      <tr>
+        <td>f32</td><td>32</td><td>~10⁻⁷</td><td>168 MB</td>
+        <td style="color:var(--accent2);">~0</td>
+        <td class="tag tag-bad">✗ excede 150 MB</td>
+      </tr>
+    </table>
+    <p class="small" style="margin-top:0.6em;">f16 é o sweet spot: 2× mais preciso que u8 no que importa, cabe na RAM, e hardware moderno converte f16→f32 em 1 ciclo (F16C).</p>
+  </section>
+
+  <section>
+    <h2>Phantom Neighbors — O Bug Silencioso do u8</h2>
+    <div class="two-col">
+      <div>
+        <h3>Como acontece</h3>
+        <p>Quantização u8: mapear f32 ∈ [0,1] → inteiro 0–255.</p>
+        <p>Passo: 1/254 ≈ <strong>0,004</strong></p>
+        <p>Dois vetores com diferença de 0,003 em f32 ficam <strong>idênticos em u8</strong>.</p>
+        <p>Esses "vizinhos fantasma" disputam o top-5 com vetores realmente próximos.</p>
+      </div>
+      <div>
+        <h3>Efeito perverso com IVF</h3>
+        <p>Mais <span class="mono">nprobe</span> → mais clusters → mais vetores visitados → <em>mais</em> phantom neighbors entram no top-5.</p>
+        <div class="formula" style="margin-top:0.6em;">
+          <span style="color:var(--red);">u8:</span><br>
+          nprobe=20 → E = 80<br>
+          nprobe=50 → E = 158<br>
+          nprobe=100 → E = <strong style="color:var(--red);">338</strong> (piora!)<br><br>
+          <span style="color:var(--accent2);">f16:</span><br>
+          nprobe=10…60 → E = <strong style="color:var(--accent2);">7 (estável)</strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Streaming Load — Lendo o Índice sem Estourar a RAM</h2>
+    <div class="two-col">
+      <div>
+        <h3>Problema</h3>
+        <p>Índice f16 em disco: <strong>83 MB</strong></p>
+        <p>Leitura ingênua:</p>
+        <pre><code class="language-zig" style="font-size:0.8em;" data-trim>
+// Lê tudo para buffer temporário
+const buf = try allocator.alloc(u8, 83_mb);
+_ = try file.readAll(buf);
+
+// Copia para estrutura alocada
+@memcpy(store.vectors_bytes, buf);
+allocator.free(buf);
+        </code></pre>
+        <div class="formula" style="color:var(--red);">
+          83 MB (buf) + 83 MB (estrutura) = <strong>166 MB</strong><br>
+          Excede o limite de 150 MB!
+        </div>
+      </div>
+      <div>
+        <h3>Solução: ler direto para a estrutura</h3>
+        <pre><code class="language-zig" style="font-size:0.8em;" data-trim>
+// Aloca só o destino final
+store.vectors = try allocator.alloc(
+    [14]f16, n_vectors);
+
+// Lê do arquivo diretamente
+// para a memória já alocada
+// Zero cópia intermediária
+const bytes = std.mem.sliceAsBytes(
+    store.vectors);
+try reader.readSliceAll(bytes);
+        </code></pre>
+        <div class="formula" style="color:var(--accent2);">Pico de RAM: <strong>83 MB</strong> ✓</div>
+      </div>
+    </div>
+    <p class="small" style="margin-top:0.4em;"><span class="mono">std.mem.sliceAsBytes</span> — converte <span class="mono">[][14]f16</span> para <span class="mono">[]u8</span> sem cópia, permitindo leitura direta da struct pelo reader.</p>
+  </section>
+</section>
+
+<!-- ════════════════════ HOT PATH ════════════════════ -->
+<section>
+  <section>
+    <h2>Zero Allocation no Hot Path</h2>
+    <p>Em Zig, toda alocação é visível no código. Isso permite eliminar <span class="mono">alloc/free</span> do caminho crítico — que roda ~450×/segundo.</p>
+    <div class="two-col">
+      <div>
+        <h3>Antes</h3>
+        <pre><code class="language-zig" style="font-size:0.8em;" data-trim>
+// Uma string nova alocada a cada request
+const body = try std.fmt.allocPrint(
+    allocator,
+    "{{\"approved\":{s}," ++
+    "\"fraud_score\":{d:.4}}}",
+    .{ approved, score }
+);
+defer allocator.free(body);
+res.body = body;
+        </code></pre>
+        <p class="small">alloc + free por request → fragmentação de heap, latência não-determinística</p>
+      </div>
+      <div>
+        <h3>Depois</h3>
+        <pre><code class="language-zig" style="font-size:0.8em;" data-trim>
+// k=5 → fraud_score só tem 6 valores possíveis
+// Constante global — vive no segmento de dados
+const RESPONSES = [6][]const u8{
+  "{\"approved\":true,\"fraud_score\":0.0000}",
+  "{\"approved\":true,\"fraud_score\":0.2000}",
+  "{\"approved\":true,\"fraud_score\":0.4000}",
+  "{\"approved\":false,\"fraud_score\":0.6000}",
+  "{\"approved\":false,\"fraud_score\":0.8000}",
+  "{\"approved\":false,\"fraud_score\":1.0000}",
+};
+
+// Ponteiro direto — zero alloc, zero cópia
+res.body = RESPONSES[fraud_count];
+        </code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Warmup: Pré-aquecendo o Cache da CPU</h2>
+    <div class="two-col">
+      <div>
+        <h3>Por que importa</h3>
+        <p>Índice f16: <strong>83 MB</strong></p>
+        <p>L3 cache de um Haswell: <strong>~8–20 MB</strong></p>
+        <p>Na inicialização, o índice inteiro está em RAM fria. As primeiras requisições sofrem cache misses de 50–100µs por acesso.</p>
+        <div class="formula" style="color:var(--red); margin-top:0.5em;">
+          Primeiras 100 reqs: 5–15ms cada<br>
+          Arruína o p99 do aquecimento
+        </div>
+      </div>
+      <div>
+        <h3>Solução: 300 queries ao inicializar</h3>
+        <pre><code class="language-zig" style="font-size:0.78em;" data-trim>
+// Antes de abrir o servidor HTTP,
+// aquecemos diferentes regiões do índice
+var wi: u32 = 0;
+while (wi < 300) : (wi += 1) {
+    // Distribui uniformemente:
+    // amount cresce por 33, km por 3
+    // → cobre clusters em diferentes
+    //   regiões do espaço de features
+    dummy.transaction.amount =
+        @as(f32, @floatFromInt(wi)) * 33;
+    dummy.terminal.km_from_home =
+        @as(f32, @floatFromInt(wi)) * 3;
+    _ = try service.evaluate(&dummy);
+}
+        </code></pre>
+        <div class="formula" style="color:var(--accent2);">First request ≈ last request</div>
+      </div>
+    </div>
+  </section>
+</section>
+
+<!-- ════════════════════ INFRAESTRUTURA ════════════════════ -->
+<section>
+  <section>
+    <h2>Infraestrutura: Onde os ms São Ganhos</h2>
+    <div class="three-col">
+      <div class="card">
+        <h3>Unix Domain Sockets</h3>
+        <p>Nginx → API via socket Unix (<span class="mono">/sockets/api1.sock</span>), não TCP loopback.</p>
+        <p>TCP exige kernel buffers separados, checksum, sequencing. UDS é memória compartilhada direta.</p>
+        <div class="formula" style="margin-top:0.4em;">−0,2 ms / request</div>
+      </div>
+      <div class="card">
+        <h3>CFS Throttling Fix</h3>
+        <p>Docker limita CPU via <strong>CFS</strong> (Completely Fair Scheduler) com período de burst + pausa.</p>
+        <p><span class="mono">cpu_period=100ms</span>: usa 45ms, para por <strong>55ms</strong>.<br>
+           <span class="mono">cpu_period=10ms</span>: usa 4,5ms, para por <strong>5,5ms</strong>.</p>
+        <div class="formula" style="margin-top:0.4em;">−50ms worst-case p99</div>
+      </div>
+      <div class="card">
+        <h3>Thread Pool = 2</h3>
+        <p>httpz com 2 worker threads por instância.</p>
+        <p>Enquanto thread A executa o IVF search (~350µs), thread B já aceita e faz o parse da próxima requisição.</p>
+        <div class="formula" style="margin-top:0.4em;">2× throughput sob carga</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>CFS Throttling — Visualizado</h2>
+    <div class="two-col">
+      <div>
+        <h3 style="color:var(--red);">❌ cpu_period = 100ms (padrão Docker)</h3>
+        <div class="cpu-bar" style="border:1px solid #7f1d1d;">
+          <div style="color:#86efac;">██████████ CPU (45ms)</div>
+          <div style="color:#f87171;">░░░░░░░░░░░░░░░░░░░░░░░░ THROTTLE (55ms)</div>
+          <div style="color:#86efac;">██████████ CPU (45ms)</div>
+          <div style="color:#f87171;">░░░░░░░░░░░░░░░░░░░░░░░░ THROTTLE (55ms)</div>
+          <div style="margin-top:0.4em; color:#fca5a5;">
+            Requisições que chegam durante o throttle ficam na fila<br>
+            → p99 sobe para 55ms+ por stall do scheduler
+          </div>
+        </div>
+      </div>
+      <div>
+        <h3 style="color:var(--accent2);">✓ cpu_period = 10ms</h3>
+        <div class="cpu-bar" style="border:1px solid #065f46;">
+          <div style="color:#86efac;">█ CPU (4,5ms)</div>
+          <div style="color:#6ee7b7;">░░░░░ THROTTLE (5,5ms)</div>
+          <div style="color:#86efac;">█ CPU (4,5ms)</div>
+          <div style="color:#6ee7b7;">░░░░░ THROTTLE (5,5ms)</div>
+          <div style="color:#86efac;">█ CPU (4,5ms) ···</div>
+          <div style="margin-top:0.4em; color:#6ee7b7;">
+            Stall máximo: <strong>5,5ms</strong><br>
+            10× melhor — invisível no p99
+          </div>
+        </div>
+        <div class="formula" style="margin-top:0.6em; font-size:0.78em;">
+          docker-compose.yml:<br>
+          cpu_period: 10000   # 10ms<br>
+          cpu_quota:  4500    # 4,5ms de CPU por período
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Bug do httpz: TCP_NODELAY em Unix Socket</h2>
+    <p>Um bug de biblioteca descoberto na integração com Unix Domain Sockets.</p>
+    <div class="two-col">
+      <div>
+        <h3>O bug</h3>
+        <pre><code class="language-zig" style="font-size:0.8em;" data-trim>
+// httpz tenta setar TCP_NODELAY
+// no listener — mesmo quando é UDS
+if (is_unix_socket) {
+    // BUG: TCP_NODELAY não existe
+    // em Unix socket — Linux retorna
+    // EOPNOTSUPP → crash!
+    try posix.setsockopt(
+        listener,
+        posix.IPPROTO.TCP,
+        1,  // TCP_NODELAY
+        &std.mem.toBytes(@as(c_int, 1))
+    );
+}
+        </code></pre>
+      </div>
+      <div>
+        <h3>A correção (como patch)</h3>
+        <pre><code class="language-zig" style="font-size:0.8em;" data-trim>
+// Em vez de try (propaga o erro),
+// ignoramos silenciosamente:
+// TCP_NODELAY é no-op em UDS de qualquer forma
+posix.setsockopt(
+    listener,
+    posix.IPPROTO.TCP,
+    1,
+    &std.mem.toBytes(@as(c_int, 1))
+) catch {};
+        </code></pre>
+        <p class="small">A correção foi aplicada como <span class="mono">patches/httpz-unix-socket-tcp-nodelay.patch</span> no Dockerfile — sem modificar o código da aplicação nem do vendor.</p>
+        <div class="callout callout-ok">
+          <p style="margin:0; font-size:0.85rem;">Em Zig, <span class="mono">catch {}</span> descarta o erro explicitamente — fica visível no code review, diferente de exceções implícitas.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</section>
+
+<!-- ════════════════════ PIPELINE ════════════════════ -->
+<section>
+  <h2>Pipeline Completo — Uma Requisição em &lt;1ms</h2>
+  <div class="pipe">
+    <div>
+      <span class="pipe-step">① Nginx</span> recebe POST TCP na porta 9999
+      <span class="pipe-time" style="float:right;">~0,05ms</span>
+    </div>
+    <div>
+      <span class="pipe-step">② Nginx</span> encaminha via Unix socket <span class="mono">/sockets/api1.sock</span>
+      <span class="pipe-time" style="float:right;">~0,02ms</span>
+    </div>
+    <div>
+      <span class="pipe-step">③ handler.zig</span> parse JSON (zero-alloc, ponteiros para o buffer)
+      <span class="pipe-time" style="float:right;">~0,02ms</span>
+    </div>
+    <div>
+      <span class="pipe-step">④ vectorizer.zig</span> transação → <span class="mono">[14]f32</span> normalizado
+      <span class="pipe-time" style="float:right;">~0,01ms</span>
+    </div>
+    <div>
+      <span class="pipe-step">⑤ ivf_store.zig</span> L2 para 1000 centroides → top-50 clusters (SIMD)
+      <span class="pipe-time" style="float:right;">~0,05ms</span>
+    </div>
+    <div>
+      <span class="pipe-step">⑥ ivf_store.zig</span> scan AVX2 dos ~150k vetores dos 50 clusters
+      <span class="pipe-time" style="float:right;">~0,35ms</span>
+      <span class="pipe-note">f16→f32 via F16C · L2 via FMA · heap O(5) para os 5 vizinhos mais próximos</span>
+    </div>
+    <div>
+      <span class="pipe-step">⑦ scorer.zig</span> votar: fraudes_count / 5 → fraud_score
+      <span class="pipe-time" style="float:right;">&lt;0,001ms</span>
+    </div>
+    <div>
+      <span class="pipe-step">⑧ handler.zig</span> <span class="mono">RESPONSES[fraud_count]</span> — zero alloc
+      <span class="pipe-time" style="float:right;">&lt;0,001ms</span>
+    </div>
+    <div>
+      <span class="pipe-step">⑨ Nginx</span> envia resposta JSON para o cliente
+      <span class="pipe-time" style="float:right;">~0,05ms</span>
+    </div>
+    <div style="border-top:1px solid #334155; margin-top:0.4em; padding-top:0.4em; color:var(--accent);">
+      Total: ~0,52ms → score_p99 = 3.000 pts (teto)
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ RESULTADOS ════════════════════ -->
+<section>
+  <h2>Resultados de Acurácia (Validação Local)</h2>
+  <div class="three-col" style="margin-bottom:1em;">
+    <div class="card" style="text-align:center;">
+      <div class="metric">7</div>
+      <div class="metric-sm">E = 1×FP + 3×FN<br>em 54.100 transações</div>
+    </div>
+    <div class="card" style="text-align:center;">
+      <div class="metric">0,013%</div>
+      <div class="metric-sm">taxa de falha (ε = E/N)<br>bem abaixo do corte de 15%</div>
+    </div>
+    <div class="card" style="text-align:center;">
+      <div class="metric">~6000</div>
+      <div class="metric-sm">score estimado<br>score_p99 + score_det</div>
+    </div>
+  </div>
+  <table>
+    <tr><th>Métrica</th><th>Valor</th><th>Notas</th></tr>
+    <tr><td>True Positives / True Negatives</td><td>24.056 / 30.041</td><td>classificação correta</td></tr>
+    <tr><td>False Positives (peso 1×)</td><td>1</td><td>legítima negada</td></tr>
+    <tr><td>False Negatives (peso 3×)</td><td>2</td><td>fraude aprovada</td></tr>
+    <tr><td>Errors (peso 5×)</td><td>0</td><td>request inválido</td></tr>
+    <tr class="hl-row"><td>E ponderado</td><td><strong>7</strong></td><td>1×1 + 3×2 = 7</td></tr>
+    <tr class="hl-row"><td>score_det estimado</td><td><strong>≥ 2.900 pts</strong></td><td>próximo do teto</td></tr>
+  </table>
+</section>
+
+<!-- ════════════════════ LIÇÕES ════════════════════ -->
+<section>
+  <h2>Lições Aprendidas</h2>
+  <div class="two-col">
+    <div>
+      <h3>Bugs que quase passaram</h3>
+      <ul style="font-size:0.85rem;">
+        <li><strong>Buffer overflow silencioso:</strong> array de heap <span class="mono">top[32]</span> estourava quando nprobe&gt;32 em <span class="mono">ReleaseFast</span> — sem panic, resultado incorreto silencioso</li>
+        <li><strong>Phantom neighbors com u8:</strong> E <em>piora</em> com mais nprobe — contraintuitivo, diagnosticado comparando com brute-force</li>
+        <li><strong>TCP_NODELAY em Unix socket:</strong> httpz tenta setar opção TCP em socket Unix → <span class="mono">EOPNOTSUPP</span> → crash ao iniciar</li>
+        <li><strong>Permissão do socket:</strong> nginx worker (user <em>nginx</em>) não conseguia escrever no socket criado com umask 022 → <span class="mono">umask 000</span> no CMD</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Decisões que valeram</h3>
+      <ul style="font-size:0.85rem;">
+        <li><strong>Zig para este domínio:</strong> vetores SIMD nativos + sem GC = combinação ideal para busca vetorial em tempo real</li>
+        <li><strong>f16 como sweet spot:</strong> 2× mais RAM que u8, mas elimina phantom neighbors completamente</li>
+        <li><strong>cpu_period=10ms:</strong> sem mudar código, p99 cai 10× só ajustando o scheduler</li>
+        <li><strong>Streaming load:</strong> ler direto para a estrutura final cabe em 150 MB onde double-buffer não cabe</li>
+        <li><strong>Respostas pré-computadas:</strong> k=5 só tem 6 saídas possíveis — zero alloc no hot path com uma linha</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════ FIM ════════════════════ -->
+<section>
+  <div style="text-align:center; padding:1em 0;">
+    <h1 style="font-size:2.8rem;">~6.000 pts</h1>
+    <p style="color:var(--accent2); font-size:1rem;">score_p99 + score_det — teto da Rinha</p>
+    <div style="margin:1.2em auto; max-width:620px;">
+      <div class="formula">
+        <strong>Zig 0.16</strong> · x86_64-linux-musl · -Doptimize=ReleaseFast · -Dtarget_cpu=haswell<br>
+        IVF K=1000 · K-Means++ 100 iter. · nprobe=50 · k=5 · f16 · SIMD AVX2+FMA+F16C<br>
+        Unix Sockets · CFS period=10ms · thread_pool=2 · warmup=300 · 0 alloc no hot path
+      </div>
+    </div>
+    <div class="three-col" style="margin-top:1.2em; font-size:0.82rem; text-align:left;">
+      <div class="card">
+        <h3>Memória</h3>
+        <p>Vetores f16: 83 MB<br>Centroides f32: &lt;1 MB<br>Runtime: ~10 MB<br><strong>Total: ~94 MB</strong></p>
+      </div>
+      <div class="card">
+        <h3>Latência estimada</h3>
+        <p>Mediana: ~0,4ms<br>p95: ~0,6ms<br>p99: ~0,8ms<br><strong>score_p99: ~3000</strong></p>
+      </div>
+      <div class="card">
+        <h3>Acurácia</h3>
+        <p>FP: 1 · FN: 2<br>E: 7 / 54.100<br>ε: 0,013%<br><strong>score_det: ~2900</strong></p>
+      </div>
+    </div>
+    <div style="margin-top:1.2em; font-size:0.8rem; color:var(--dim);">
+      <a href="https://github.com/dmux/rinha-de-backend-2026-zig" style="color:var(--accent2);">
+        github.com/dmux/rinha-de-backend-2026-zig
+      </a>
+    </div>
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    slideNumber: 'c/t',
+    transition: 'slide',
+    transitionSpeed: 'fast',
+    backgroundTransition: 'fade',
+    controls: true,
+    progress: true,
+    center: false,
+    width: 1280,
+    height: 720,
+    margin: 0.04,
+    plugins: [ RevealHighlight, RevealNotes ]
+  });
+</script>
+</body>
+</html>

@@ -32,6 +32,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '0.45'
           memory: 150M
     # CFS Throttling mitigation: 10ms period limits stall to 5.5ms (vs 55ms with 100ms)
     cpu_period: 10000
@@ -57,6 +58,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '0.45'
           memory: 150M
     # CFS Throttling mitigation: 10ms period limits stall to 5.5ms (vs 55ms with 100ms)
     cpu_period: 10000
