@@ -1,6 +1,6 @@
 # Stage 1: Compile Zig binaries (fraud-api + preprocess)
 FROM debian:bookworm-slim AS zig-builder
-RUN apt-get update && apt-get install -y curl xz-utils && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl xz-utils patch && rm -rf /var/lib/apt/lists/*
 ARG ZIG_VERSION=0.16.0
 RUN curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
     | tar -xJ -C /opt && \
@@ -8,8 +8,10 @@ RUN curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${Z
 WORKDIR /app
 COPY build.zig build.zig.zon ./
 COPY zig-pkg/ zig-pkg/
+COPY patches/ patches/
 COPY src/ src/
 COPY tools/ tools/
+RUN patch -p1 < patches/httpz-unix-socket-tcp-nodelay.patch
 RUN zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux-musl -Dtarget_cpu=haswell
 
 # Stage 2: Build the IVF index from references.json.gz
