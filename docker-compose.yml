@@ -30,6 +30,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '0.45'
           memory: 150M
     cpu_period: 10000
     cpu_quota: 4500
@@ -52,6 +53,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '0.45'
           memory: 150M
     cpu_period: 10000
     cpu_quota: 4500
