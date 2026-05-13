@@ -1,14 +1,11 @@
---- a/zig-pkg/httpz-0.0.0-PNVzrJUWCADf96eygXxMPMSWJ-SMNkGDB1B6BUEP7dZZ/src/httpz.zig
-+++ b/zig-pkg/httpz-0.0.0-PNVzrJUWCADf96eygXxMPMSWJ-SMNkGDB1B6BUEP7dZZ/src/httpz.zig
-@@ -370,7 +370,8 @@ pub fn ServerCtx(comptime C: type, comptime WebsocketHandler: type) type {
-                // TODO: Broken on darwin:
-                // https://github.com/ziglang/zig/issues/17260
-                // if (@hasDecl(os.TCP, "NODELAY")) {
--               //  try os.setsockopt(socket.sockfd.?, os.IPPROTO.TCP, os.TCP.NODELAY, &std.mem.toBytes(@as(c_int, 1)));
--               // }
--               try posix.setsockopt(listener, posix.IPPROTO.TCP, 1, &std.mem.toBytes(@as(c_int, 1)));
-+               //  try os.setsockopt(socket.sockfd.?, os.IPPROTO.TCP, os.TCP.NODELAY, ...);
-+               // }
-+               // TCP_NODELAY is not applicable to Unix domain sockets — ignore EOPNOTSUPP
-+               posix.setsockopt(listener, posix.IPPROTO.TCP, 1, &std.mem.toBytes(@as(c_int, 1))) catch {};
-            }
+--- zig-pkg/httpz-0.0.0-PNVzrJUWCADf96eygXxMPMSWJ-SMNkGDB1B6BUEP7dZZ/src/httpz.zig.orig	2026-05-12 22:03:12
++++ zig-pkg/httpz-0.0.0-PNVzrJUWCADf96eygXxMPMSWJ-SMNkGDB1B6BUEP7dZZ/src/httpz.zig	2026-05-12 22:03:12
+@@ -370,7 +370,7 @@
+                 // if (@hasDecl(os.TCP, "NODELAY")) {
+                 //  try os.setsockopt(socket.sockfd.?, os.IPPROTO.TCP, os.TCP.NODELAY, &std.mem.toBytes(@as(c_int, 1)));
+                 // }
+-                try posix.setsockopt(listener, posix.IPPROTO.TCP, 1, &std.mem.toBytes(@as(c_int, 1)));
++                posix.setsockopt(listener, posix.IPPROTO.TCP, 1, &std.mem.toBytes(@as(c_int, 1))) catch {};
+             }
+ 
+             try posix.setsockopt(listener, posix.SOL.SOCKET, posix.SO.REUSEADDR, &std.mem.toBytes(@as(c_int, 1)));

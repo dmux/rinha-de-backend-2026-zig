@@ -11,7 +11,7 @@ COPY zig-pkg/ zig-pkg/
 COPY patches/ patches/
 COPY src/ src/
 COPY tools/ tools/
-RUN patch -p1 < patches/httpz-unix-socket-tcp-nodelay.patch
+RUN patch -p0 < patches/httpz-unix-socket-tcp-nodelay.patch
 RUN zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux-musl -Dtarget_cpu=haswell
 
 # Stage 2: Build the IVF index from references.json.gz
