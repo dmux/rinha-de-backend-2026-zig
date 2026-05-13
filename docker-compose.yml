@@ -32,8 +32,6 @@ services:
         limits:
           cpus: '0.45'
           memory: 150M
-    cpu_period: 10000
-    cpu_quota: 4500
     healthcheck:
       test: ["CMD", "curl", "-sf", "--unix-socket", "/sockets/api1.sock", "http://localhost/ready"]
       interval: 5s
@@ -55,8 +53,6 @@ services:
         limits:
           cpus: '0.45'
           memory: 150M
-    cpu_period: 10000
-    cpu_quota: 4500
     healthcheck:
       test: ["CMD", "curl", "-sf", "--unix-socket", "/sockets/api2.sock", "http://localhost/ready"]
       interval: 5s
