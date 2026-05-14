@@ -13,7 +13,7 @@ COPY src/ src/
 COPY tools/ tools/
 RUN patch -p0 < patches/httpz-unix-socket-tcp-nodelay.patch && \
     patch -p0 < patches/httpz-fix-eventfd-et-bug.patch
-RUN zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux-musl -Dtarget_cpu=haswell
+RUN zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux-musl -Dtarget_cpu=x86_64_v3
 
 # Stage 2: Build the IVF index from references.json.gz
 FROM debian:bookworm-slim AS preprocessor

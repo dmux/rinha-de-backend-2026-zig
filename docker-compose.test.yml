@@ -1,6 +1,7 @@
 services:
   nginx:
     image: nginx:latest
+    platform: linux/amd64
     container_name: nginx
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
@@ -21,9 +22,8 @@ services:
       - rinha-network
 
   api-1:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: fraud-api-amd64
+    platform: linux/amd64
     container_name: api-1
     environment:
       - API_SOCKET=/sockets/api1.sock
@@ -34,37 +34,36 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.45'
           memory: 150M
     healthcheck:
       test: ["CMD", "curl", "-sf", "--unix-socket", "/sockets/api1.sock", "http://localhost/ready"]
       interval: 5s
       timeout: 2s
       retries: 10
-      start_period: 30s
+      start_period: 60s
     networks:
       - rinha-network
 
   api-2:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: fraud-api-amd64
+    platform: linux/amd64
     container_name: api-2
     environment:
       - API_SOCKET=/sockets/api2.sock
     volumes:
       - sockets:/sockets
+    cpu_period: 10000
+    cpu_quota: 4500
     deploy:
       resources:
         limits:
-          cpus: '0.45'
           memory: 150M
     healthcheck:
       test: ["CMD", "curl", "-sf", "--unix-socket", "/sockets/api2.sock", "http://localhost/ready"]
       interval: 5s
       timeout: 2s
       retries: 10
-      start_period: 30s
+      start_period: 60s
     networks:
       - rinha-network
 
