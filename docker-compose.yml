@@ -29,6 +29,8 @@ services:
       - API_SOCKET=/sockets/api1.sock
     volumes:
       - sockets:/sockets
+    cpu_period: 10000
+    cpu_quota: 4500
     deploy:
       resources:
         limits:
@@ -52,6 +54,8 @@ services:
       - API_SOCKET=/sockets/api2.sock
     volumes:
       - sockets:/sockets
+    cpu_period: 10000
+    cpu_quota: 4500
     deploy:
       resources:
         limits:

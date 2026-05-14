@@ -2,27 +2,22 @@
 
 Implementação de alta performance para o desafio Rinha de Backend 2026. Detecção de fraude via busca k-NN aproximada em 3 milhões de vetores de referência, com latência sub-milissegundo sob restrição severa de CPU e memória.
 
-## 📊 Métricas de Acurácia (Validação Local — 54.100 transações)
+## 📊 Resultados do Teste Oficial (k6 — 54.059 transações)
 
-| Métrica | Valor |
-| :--- | :--- |
-| **Total avaliado** | 54.100 transações |
-| **TP (Verdadeiro Positivo)** | 24.056 |
-| **TN (Verdadeiro Negativo)** | 30.041 |
-| **FP (Falso Positivo)** | 1 |
-| **FN (Falso Negativo)** | 2 |
-| **E = 1×FP + 3×FN** | **7** |
-| **Taxa de falha (ε = E/N)** | 0,0129% |
-| **score_det estimado** | ≥ 3.000 pts |
-
-## 🚀 Métricas de Performance (Ambiente Docker — Rinha)
+Teste rodado localmente com imagem `linux/amd64` via Docker + k6, seguindo o script oficial da Rinha.
 
 | Métrica | Resultado |
 | :--- | :--- |
-| **p99 projetado** | ≤ 1 ms |
-| **score_p99 estimado** | ≥ 3.000 pts |
-| **Score final estimado** | **≥ 5.900 pts** |
-| **Infraestrutura** | 2× API (0,45 CPU / 150 MB) + Nginx (0,10 CPU / 50 MB) |
+| **Score final** | **4608.09 pts** |
+| **score_p99** | +1879.01 (p99 = 13,21 ms¹) |
+| **score_det** | +2729.07 |
+| **HTTP errors** | **0** (em 54.059 requisições) |
+| **failure_rate** | 0,01% |
+| **E = 1×FP + 3×FN** | **7** |
+| **FP / FN / Erros** | 1 / 2 / 0 |
+| **TP / TN** | 24.035 / 30.021 |
+
+> ¹ p99 medido sob emulação QEMU (ARM64 → amd64). Em hardware x86_64 nativo, com `cpu_period=10ms`, estimativa: p99 ~2 ms → score_p99 ~2699 → **score total ~5428 pts**.
 
 ## 🔬 Arquitetura e Decisões Técnicas
 
@@ -30,7 +25,7 @@ Implementação de alta performance para o desafio Rinha de Backend 2026. Detec�
 
 - **3 milhões de vetores** de referência organizados em **1.000 clusters** via K-Means++ (100 iterações)
 - **Vetores armazenados em f16** (half-precision): 16× mais precisos que u8, 83 MB de índice (vs. 43 MB em u8 ou 168 MB em f32 — que excede o limite de 150 MB por instância)
-- **nprobe = 50**: escaneia os 50 clusters mais próximos (~150.000 vetores por query) em ~350 µs
+- **nprobe = 15**: escaneia os 15 clusters mais próximos (~45.000 vetores por query); validado como ótimo — mesmo E=7 que nprobe=50, com menor latência
 - **Streaming load** via `initFromFile`: evita pico de 180 MB ao carregar o índice (lê direto nas estruturas alocadas)
 
 ### Por que f16 e não u8 ou f32?
@@ -47,7 +42,7 @@ O u8 criava "phantom neighbors" — rank inversions por arredondamento que corro
 
 - **Unix Domain Sockets** entre Nginx e APIs: elimina overhead TCP (~0,2 ms por requisição)
 - **CFS fix**: `cpu_period=10ms` (era 100ms) — reduz stalls máximos de 55ms para 5,5ms
-- **Thread pool = 2** por instância: processa buscas IVF em paralelo sem context-switch excessivo
+- **Thread pool = 6** por instância: processa buscas IVF em paralelo, saturando as 0,45 CPU sem context-switch excessivo
 - **Respostas pré-computadas**: `fraud_score ∈ {0.0, 0.2, 0.4, 0.6, 0.8, 1.0}` → 6 strings estáticas, zero `alloc` no hot path
 - **Warmup de 300 queries** variadas ao iniciar: pré-popula L3 cache nas regiões mais acessadas do índice
 
@@ -125,8 +120,8 @@ zig build -Doptimize=ReleaseFast
 ## 🧠 Algoritmo de Decisão
 
 1. **Vetorização**: Converte os 14 campos da transação em um vetor `[14]f32` normalizado em [0,1] (−1 para campos ausentes)
-2. **Centróides**: Calcula distância L2 para os 1.000 centroids e seleciona os `nprobe=50` mais próximos
-3. **Scan SIMD**: Carrega vetores f16 → converte para f32 → calcula L2 vetorial para ~150.000 candidatos
+2. **Centróides**: Calcula distância L2 para os 1.000 centroids e seleciona os `nprobe=15` mais próximos
+3. **Scan SIMD**: Carrega vetores f16 → converte para f32 → calcula L2 vetorial para ~45.000 candidatos
 4. **k-NN heap**: Mantém os 5 vizinhos mais próximos via max-slot tracking (O(k) por substituição)
 5. **Voto**: `fraud_score = fraudes_encontradas / 5`. Se ≥ 0,6 → negado; caso contrário → aprovado
 
