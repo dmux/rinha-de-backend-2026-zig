@@ -21,16 +21,23 @@ services:
       - rinha-network
 
   api-1:
-    image: ghcr.io/dmux/rinha-de-backend-2026-zig:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: api-1
     environment:
       - API_SOCKET=/sockets/api1.sock
+      - THRESHOLD=0.6
+      - NPROBE=15
+      - INDEX_PATH=/data/ivf_index.bin
+      - MCC_RISK_PATH=/resources/mcc_risk.json
     volumes:
       - sockets:/sockets
+    cpu_period: 50000
+    cpu_quota: 22500
     deploy:
       resources:
         limits:
-          cpus: '0.45'
           memory: 150M
     healthcheck:
       test: ["CMD", "curl", "-sf", "--unix-socket", "/sockets/api1.sock", "http://localhost/ready"]
@@ -42,16 +49,23 @@ services:
       - rinha-network
 
   api-2:
-    image: ghcr.io/dmux/rinha-de-backend-2026-zig:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: api-2
     environment:
       - API_SOCKET=/sockets/api2.sock
+      - THRESHOLD=0.6
+      - NPROBE=15
+      - INDEX_PATH=/data/ivf_index.bin
+      - MCC_RISK_PATH=/resources/mcc_risk.json
     volumes:
       - sockets:/sockets
+    cpu_period: 50000
+    cpu_quota: 22500
     deploy:
       resources:
         limits:
-          cpus: '0.45'
           memory: 150M
     healthcheck:
       test: ["CMD", "curl", "-sf", "--unix-socket", "/sockets/api2.sock", "http://localhost/ready"]
