@@ -75,6 +75,20 @@ pub fn build(b: *std.Build) void {
     validate.root_module.addImport("domain", domain_mod);
     b.installArtifact(validate);
 
+    const httpz_mod = httpz.module("httpz");
+
+    // Zig Proxy
+    const proxy = b.addExecutable(.{
+        .name = "zig-proxy",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/proxy.zig"),
+            .target = resolved_target,
+            .optimize = optimize,
+        }),
+    });
+    proxy.root_module.addImport("httpz", httpz_mod);
+    b.installArtifact(proxy);
+
     // Run Command
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

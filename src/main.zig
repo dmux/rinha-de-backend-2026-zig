@@ -58,10 +58,10 @@ pub fn main(init: std.process.Init) !void {
 
     const service = FraudService.init(vs, mcc_risk, threshold);
 
-    // Warm-up: 1000 varied queries to pre-populate caches and warm the engine
-    std.debug.print("Warming up engine (1000 searches)...\n", .{});
+    // Warm-up: 2000 varied queries to pre-populate caches and warm the engine
+    std.debug.print("Warming up engine (2000 searches)...\n", .{});
     var wi: u32 = 0;
-    while (wi < 1000) : (wi += 1) {
+    while (wi < 2000) : (wi += 1) {
         const amount: f64 = @as(f64, @floatFromInt(wi * 33 + 1));
         const km: f64 = @as(f64, @floatFromInt(wi * 3));
         const avg: f64 = @as(f64, @floatFromInt(wi * 17 % 500 + 10));

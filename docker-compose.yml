@@ -1,9 +1,11 @@
 services:
-  nginx:
-    image: nginx:latest
-    container_name: nginx
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: proxy
+    container_name: proxy
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - sockets:/sockets
     depends_on:
       api-1:
@@ -12,10 +14,11 @@ services:
         condition: service_healthy
     ports:
       - "9999:9999"
+    cpu_period: 100000
+    cpu_quota: 5000 # 0.05 CPU (Proxy is very light with Splice)
     deploy:
       resources:
         limits:
-          cpus: '0.10'
           memory: 50M
     networks:
       - rinha-network
@@ -24,27 +27,27 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime
     container_name: api-1
+    command: ["--index", "/data/ivf_index.bin", "--mcc-risk", "/resources/mcc_risk.json", "--port", "8080"]
     environment:
       - API_SOCKET=/sockets/api1.sock
       - THRESHOLD=0.6
       - NPROBE=15
-      - INDEX_PATH=/data/ivf_index.bin
-      - MCC_RISK_PATH=/resources/mcc_risk.json
     volumes:
       - sockets:/sockets
-    cpu_period: 50000
-    cpu_quota: 22500
+    cpu_period: 100000
+    cpu_quota: 47500 # 0.475 CPU
     deploy:
       resources:
         limits:
           memory: 150M
     healthcheck:
       test: ["CMD", "curl", "-sf", "--unix-socket", "/sockets/api1.sock", "http://localhost/ready"]
-      interval: 5s
-      timeout: 2s
-      retries: 10
-      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
     networks:
       - rinha-network
 
@@ -52,27 +55,27 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime
     container_name: api-2
+    command: ["--index", "/data/ivf_index.bin", "--mcc-risk", "/resources/mcc_risk.json", "--port", "8080"]
     environment:
       - API_SOCKET=/sockets/api2.sock
       - THRESHOLD=0.6
       - NPROBE=15
-      - INDEX_PATH=/data/ivf_index.bin
-      - MCC_RISK_PATH=/resources/mcc_risk.json
     volumes:
       - sockets:/sockets
-    cpu_period: 50000
-    cpu_quota: 22500
+    cpu_period: 100000
+    cpu_quota: 47500 # 0.475 CPU
     deploy:
       resources:
         limits:
           memory: 150M
     healthcheck:
       test: ["CMD", "curl", "-sf", "--unix-socket", "/sockets/api2.sock", "http://localhost/ready"]
-      interval: 5s
-      timeout: 2s
-      retries: 10
-      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
     networks:
       - rinha-network
 
