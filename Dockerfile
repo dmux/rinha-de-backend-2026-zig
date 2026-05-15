@@ -22,17 +22,12 @@ COPY --from=zig-builder /app/zig-out/bin/preprocess /preprocess
 RUN mkdir -p /data && \
     /preprocess /resources/references.json.gz /data/ivf_index.bin
 
-# Stage 3: Runtime for APIs
-FROM ubuntu:24.04 AS runtime
+# Stage 3: Combined Runtime for API and Proxy
+FROM ubuntu:24.04
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 COPY --from=preprocessor /data/ivf_index.bin /data/ivf_index.bin
 COPY --from=zig-builder /app/zig-out/bin/fraud-api /fraud-api
-COPY resources/mcc_risk.json /resources/mcc_risk.json
-EXPOSE 8080
-ENTRYPOINT ["/fraud-api"]
-
-# Stage 4: Runtime for Proxy
-FROM scratch AS proxy
 COPY --from=zig-builder /app/zig-out/bin/zig-proxy /zig-proxy
-EXPOSE 9999
-ENTRYPOINT ["/zig-proxy"]
+COPY resources/mcc_risk.json /resources/mcc_risk.json
+EXPOSE 8080 9999
+ENTRYPOINT ["/fraud-api"]
