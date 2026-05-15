@@ -15,10 +15,14 @@ pub fn main(init: std.process.Init) !void {
     defer args_iter.deinit();
     _ = args_iter.next(); // skip argv[0]
 
-    var index_path: []const u8 = "/data/ivf_index.bin";
-    var mcc_risk_path: []const u8 = "/resources/mcc_risk.json";
+    var index_path: []const u8 = init.environ_map.get("INDEX_PATH") orelse "/data/ivf_index.bin";
+    var mcc_risk_path: []const u8 = init.environ_map.get("MCC_RISK_PATH") orelse "/resources/mcc_risk.json";
     var port: u16 = 8080;
+    if (init.environ_map.get("PORT")) |v| port = std.fmt.parseInt(u16, v, 10) catch 8080;
     var threshold: f32 = 0.6;
+    if (init.environ_map.get("THRESHOLD")) |v| threshold = std.fmt.parseFloat(f32, v) catch 0.6;
+    var nprobe_env: ?u32 = null;
+    if (init.environ_map.get("NPROBE")) |v| nprobe_env = std.fmt.parseInt(u32, v, 10) catch null;
 
     while (args_iter.next()) |arg| {
         if (std.mem.eql(u8, arg, "--index")) {
@@ -37,6 +41,7 @@ pub fn main(init: std.process.Init) !void {
 
     std.debug.print("Loading IVF index from {s}...\n", .{index_path});
     const store = try IvfStore.initFromFile(allocator, io, dir, index_path);
+    if (nprobe_env) |np| store.header.nprobe = np;
     const vs = store.vectorStore();
     defer vs.deinit();
 

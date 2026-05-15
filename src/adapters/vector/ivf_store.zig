@@ -132,14 +132,13 @@ pub const IvfStore = struct {
                 const vec_f16: @Vector(14, f16) = vec_arr.*;
                 const vec_f32: @Vector(14, f32) = vec_f16;
 
-                // Both query and stored vector must be present (≥ 0) for a dimension to count
+                // Only valid (≥ 0) dimensions count. If missing in either query or stored vector, difference is 0
                 const v_present = vec_f32 >= v_neg;
                 const present = q_present & v_present;
 
-                const qv = @select(f32, present, query_vec, @as(@Vector(14, f32), @splat(0.0)));
-                const vv = @select(f32, present, vec_f32, @as(@Vector(14, f32), @splat(0.0)));
-                const diff = qv - vv;
-                const df = @reduce(.Add, diff * diff);
+                const diff = query_vec - vec_f32;
+                const final_diff = @select(f32, present, diff, @as(@Vector(14, f32), @splat(0.0)));
+                const df = @reduce(.Add, final_diff * final_diff);
 
                 if (count < k) {
                     results[count] = .{ .distance = df, .is_fraud = label != 0 };

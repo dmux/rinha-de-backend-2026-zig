@@ -21,24 +21,35 @@ pub fn parseManual(allocator: std.mem.Allocator, json: []const u8) !FraudRequest
             else => return error.BadJson,
         };
 
-        if (std.mem.eql(u8, key, "id")) {
-            req.id = try parseString(allocator, &scanner);
-        } else if (std.mem.eql(u8, key, "transaction")) {
-            req.transaction = try parseTransaction(allocator, &scanner);
-        } else if (std.mem.eql(u8, key, "customer")) {
-            req.customer = try parseCustomer(allocator, &scanner);
-        } else if (std.mem.eql(u8, key, "merchant")) {
-            req.merchant = try parseMerchant(allocator, &scanner);
-        } else if (std.mem.eql(u8, key, "terminal")) {
-            req.terminal = try parseTerminal(&scanner);
-        } else if (std.mem.eql(u8, key, "last_transaction")) {
-            const next_tok = try scanner.next();
-            if (next_tok == .null) {
-                // already consumed
-            } else if (next_tok == .object_begin) {
-                req.last_transaction = try parseLastTransactionBody(&scanner);
-            } else {
-                return error.BadJson;
+        if (key.len > 0) {
+            switch (key[0]) {
+                'i' => {
+                    if (std.mem.eql(u8, key, "id")) req.id = try parseString(allocator, &scanner) else try scanner.skipValue();
+                },
+                't' => {
+                    if (std.mem.eql(u8, key, "transaction")) req.transaction = try parseTransaction(allocator, &scanner) else if (std.mem.eql(u8, key, "terminal")) req.terminal = try parseTerminal(&scanner) else try scanner.skipValue();
+                },
+                'c' => {
+                    if (std.mem.eql(u8, key, "customer")) req.customer = try parseCustomer(allocator, &scanner) else try scanner.skipValue();
+                },
+                'm' => {
+                    if (std.mem.eql(u8, key, "merchant")) req.merchant = try parseMerchant(allocator, &scanner) else try scanner.skipValue();
+                },
+                'l' => {
+                    if (std.mem.eql(u8, key, "last_transaction")) {
+                        const next_tok = try scanner.next();
+                        if (next_tok == .null) {
+                            // already consumed
+                        } else if (next_tok == .object_begin) {
+                            req.last_transaction = try parseLastTransactionBody(&scanner);
+                        } else {
+                            return error.BadJson;
+                        }
+                    } else {
+                        try scanner.skipValue();
+                    }
+                },
+                else => try scanner.skipValue(),
             }
         } else {
             try scanner.skipValue();
@@ -75,12 +86,10 @@ fn parseTransaction(allocator: std.mem.Allocator, scanner: *std.json.Scanner) !F
             .string => |s| s,
             else => return error.BadJson,
         };
-        if (std.mem.eql(u8, key, "amount")) info.amount = try parseNumber(scanner)
-        else if (std.mem.eql(u8, key, "installments")) {
+        if (std.mem.eql(u8, key, "amount")) info.amount = try parseNumber(scanner) else if (std.mem.eql(u8, key, "installments")) {
             const num = try scanner.next();
             info.installments = try std.fmt.parseInt(u8, num.number, 10);
-        } else if (std.mem.eql(u8, key, "requested_at")) info.requested_at = try parseString(allocator, scanner)
-        else try scanner.skipValue();
+        } else if (std.mem.eql(u8, key, "requested_at")) info.requested_at = try parseString(allocator, scanner) else try scanner.skipValue();
     }
     return info;
 }
@@ -95,8 +104,7 @@ fn parseCustomer(allocator: std.mem.Allocator, scanner: *std.json.Scanner) !Frau
             .string => |s| s,
             else => return error.BadJson,
         };
-        if (std.mem.eql(u8, key, "avg_amount")) info.avg_amount = try parseNumber(scanner)
-        else if (std.mem.eql(u8, key, "tx_count_24h")) {
+        if (std.mem.eql(u8, key, "avg_amount")) info.avg_amount = try parseNumber(scanner) else if (std.mem.eql(u8, key, "tx_count_24h")) {
             const num = try scanner.next();
             info.tx_count_24h = try std.fmt.parseInt(u32, num.number, 10);
         } else if (std.mem.eql(u8, key, "known_merchants")) {
@@ -128,10 +136,7 @@ fn parseMerchant(allocator: std.mem.Allocator, scanner: *std.json.Scanner) !Frau
             .string => |s| s,
             else => return error.BadJson,
         };
-        if (std.mem.eql(u8, key, "id")) info.id = try parseString(allocator, scanner)
-        else if (std.mem.eql(u8, key, "mcc")) info.mcc = try parseString(allocator, scanner)
-        else if (std.mem.eql(u8, key, "avg_amount")) info.avg_amount = try parseNumber(scanner)
-        else try scanner.skipValue();
+        if (std.mem.eql(u8, key, "id")) info.id = try parseString(allocator, scanner) else if (std.mem.eql(u8, key, "mcc")) info.mcc = try parseString(allocator, scanner) else if (std.mem.eql(u8, key, "avg_amount")) info.avg_amount = try parseNumber(scanner) else try scanner.skipValue();
     }
     return info;
 }
@@ -146,10 +151,7 @@ fn parseTerminal(scanner: *std.json.Scanner) !FraudRequest.TerminalInfo {
             .string => |s| s,
             else => return error.BadJson,
         };
-        if (std.mem.eql(u8, key, "is_online")) info.is_online = (try scanner.next()) == .true
-        else if (std.mem.eql(u8, key, "card_present")) info.card_present = (try scanner.next()) == .true
-        else if (std.mem.eql(u8, key, "km_from_home")) info.km_from_home = try parseNumber(scanner)
-        else try scanner.skipValue();
+        if (std.mem.eql(u8, key, "is_online")) info.is_online = (try scanner.next()) == .true else if (std.mem.eql(u8, key, "card_present")) info.card_present = (try scanner.next()) == .true else if (std.mem.eql(u8, key, "km_from_home")) info.km_from_home = try parseNumber(scanner) else try scanner.skipValue();
     }
     return info;
 }
@@ -169,8 +171,7 @@ fn parseLastTransactionBody(scanner: *std.json.Scanner) !FraudRequest.LastTransa
                 .string => |s| s,
                 else => return error.BadJson,
             };
-        } else if (std.mem.eql(u8, key, "km_from_current")) info.km_from_current = try parseNumber(scanner)
-        else try scanner.skipValue();
+        } else if (std.mem.eql(u8, key, "km_from_current")) info.km_from_current = try parseNumber(scanner) else try scanner.skipValue();
     }
     return info;
 }
