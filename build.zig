@@ -63,6 +63,9 @@ pub fn build(b: *std.Build) void {
     preprocess.root_module.addImport("domain", domain_mod);
     b.installArtifact(preprocess);
 
+    const preprocess_step = b.step("preprocess", "Build the preprocessor tool");
+    preprocess_step.dependOn(&b.addInstallArtifact(preprocess, .{}).step);
+
     // Validate Tool
     const validate = b.addExecutable(.{
         .name = "validate",
@@ -88,6 +91,10 @@ pub fn build(b: *std.Build) void {
     });
     proxy.root_module.addImport("httpz", httpz_mod);
     b.installArtifact(proxy);
+
+    const api_step = b.step("api", "Build the fraud-api and zig-proxy");
+    api_step.dependOn(&b.addInstallArtifact(exe, .{}).step);
+    api_step.dependOn(&b.addInstallArtifact(proxy, .{}).step);
 
     // Run Command
     const run_cmd = b.addRunArtifact(exe);
