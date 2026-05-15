@@ -33,8 +33,8 @@ services:
       - MCC_RISK_PATH=/resources/mcc_risk.json
     volumes:
       - sockets:/sockets
-    cpu_period: 10000
-    cpu_quota: 4500
+    cpu_period: 50000
+    cpu_quota: 22500
     deploy:
       resources:
         limits:
@@ -61,8 +61,8 @@ services:
       - MCC_RISK_PATH=/resources/mcc_risk.json
     volumes:
       - sockets:/sockets
-    cpu_period: 10000
-    cpu_quota: 4500
+    cpu_period: 50000
+    cpu_quota: 22500
     deploy:
       resources:
         limits:

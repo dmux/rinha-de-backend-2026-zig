@@ -58,10 +58,10 @@ pub fn main(init: std.process.Init) !void {
 
     const service = FraudService.init(vs, mcc_risk, threshold);
 
-    // Warm-up: 300 varied queries to pre-populate L3 cache across cluster regions
-    std.debug.print("Warming up engine...\n", .{});
+    // Warm-up: 1000 varied queries to pre-populate caches and warm the engine
+    std.debug.print("Warming up engine (1000 searches)...\n", .{});
     var wi: u32 = 0;
-    while (wi < 300) : (wi += 1) {
+    while (wi < 1000) : (wi += 1) {
         const amount: f64 = @as(f64, @floatFromInt(wi * 33 + 1));
         const km: f64 = @as(f64, @floatFromInt(wi * 3));
         const avg: f64 = @as(f64, @floatFromInt(wi * 17 % 500 + 10));
@@ -74,6 +74,7 @@ pub fn main(init: std.process.Init) !void {
         });
         _ = try service.evaluate(&dummy);
     }
+    std.debug.print("Engine warmed up\n", .{});
 
     var state = AppState.init(&service);
     state.setReady();
@@ -91,8 +92,14 @@ pub fn main(init: std.process.Init) !void {
 
     var server = try httpz.Server(*AppState).init(io, allocator, .{
         .address = address,
-        .thread_pool = .{ .count = 2 },
-        .request = .{ .max_body_size = 8192 },
+        .thread_pool = .{ 
+            .count = 1,
+            .backlog = 2048,
+        },
+        .request = .{ 
+            .max_body_size = 8192,
+            .buffer_size = 4096,
+        },
     }, &state);
     defer server.deinit();
     defer server.stop();
