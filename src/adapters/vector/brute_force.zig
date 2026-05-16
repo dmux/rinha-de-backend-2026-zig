@@ -87,7 +87,7 @@ pub const BruteForceStore = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn search(ptr: *anyopaque, query: Vector14, results: []SearchResult) !usize {
+    pub fn search(ptr: *anyopaque, query: Vector14, results: []SearchResult, _: ?u32) !usize {
         const self: *BruteForceStore = @ptrCast(@alignCast(ptr));
         const k = results.len;
         const query_vec: @Vector(14, f32) = query;

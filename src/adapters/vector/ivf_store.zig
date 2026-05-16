@@ -1,6 +1,8 @@
 const std = @import("std");
 const types = @import("../../domain/types.zig");
 const vector_store = @import("../../ports/vector_store.zig");
+const linux = std.os.linux;
+const posix = std.posix;
 
 const Vector14 = types.Vector14;
 const SearchResult = types.SearchResult;
@@ -13,40 +15,49 @@ pub const IvfStore = struct {
     offsets: []u32,
     vectors: []align(32) [14]f16,
     labels: []u8,
+    mmap_ptr: ?[*]align(4096) u8 = null,
+    mmap_len: usize = 0,
 
-    // Stream-parse IVF index directly from file (no intermediate buffer — avoids 2× peak memory)
     pub fn initFromFile(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, path: []const u8) !*IvfStore {
         const file = try dir.openFile(io, path, .{});
         defer file.close(io);
 
-        var read_buf: [65536]u8 = undefined;
-        var fr = file.reader(io, &read_buf);
-        const r = &fr.interface;
+        const stat = try file.stat(io);
+        const size = stat.size;
 
-        var header: IndexHeader = undefined;
-        try r.readSliceAll(std.mem.asBytes(&header));
+        // Use direct linux mmap syscall to avoid std library issues
+        // PROT_READ=1, MAP_PRIVATE=2
+        const mmap_res = linux.syscall6(.mmap, 0, size, 1, 2, @as(usize, @bitCast(@as(isize, file.handle))), 0);
+        const mmap_ptr: [*]align(4096) u8 = @ptrFromInt(mmap_res);
+        const mmap_data = mmap_ptr[0..size];
+
+        var pos: usize = 0;
+        
+        const header_ptr: *IndexHeader = @ptrCast(@alignCast(&mmap_data[pos]));
+        const header = header_ptr.*;
+        pos += @sizeOf(IndexHeader);
 
         if (header.magic != IndexHeader.MAGIC) return error.InvalidMagic;
         if (header.n_dims != 14) return error.InvalidDimensions;
         if (header.version != 2) return error.UnsupportedVersion;
 
-        const centroids = try allocator.alignedAlloc([14]f32, .fromByteUnits(32), header.n_centroids);
-        errdefer allocator.free(centroids);
-        try r.readSliceAll(std.mem.sliceAsBytes(centroids));
+        const centroids_bytes = header.n_centroids * @sizeOf([14]f32);
+        const centroids: []align(32) [14]f32 = @alignCast(std.mem.bytesAsSlice([14]f32, mmap_data[pos .. pos + centroids_bytes]));
+        pos += centroids_bytes;
 
+        // Offsets need endianness correction, so we copy them
         const offsets = try allocator.alloc(u32, header.n_centroids + 1);
         errdefer allocator.free(offsets);
-        try r.readSliceAll(std.mem.sliceAsBytes(offsets));
-        // Fix endianness: offsets were written as little-endian u32
+        const offsets_bytes = (header.n_centroids + 1) * @sizeOf(u32);
+        @memcpy(std.mem.sliceAsBytes(offsets), mmap_data[pos .. pos + offsets_bytes]);
         for (offsets) |*o| o.* = std.mem.littleToNative(u32, o.*);
+        pos += offsets_bytes;
 
-        const vectors = try allocator.alignedAlloc([14]f16, .fromByteUnits(32), header.n_vectors);
-        errdefer allocator.free(vectors);
-        try r.readSliceAll(std.mem.sliceAsBytes(vectors));
+        const vectors_bytes = header.n_vectors * @sizeOf([14]f16);
+        const vectors: []align(32) [14]f16 = @alignCast(std.mem.bytesAsSlice([14]f16, mmap_data[pos .. pos + vectors_bytes]));
+        pos += vectors_bytes;
 
-        const labels = try allocator.alloc(u8, header.n_vectors);
-        errdefer allocator.free(labels);
-        try r.readSliceAll(labels);
+        const labels = mmap_data[pos .. pos + header.n_vectors];
 
         const self = try allocator.create(IvfStore);
         self.* = .{
@@ -56,25 +67,27 @@ pub const IvfStore = struct {
             .offsets = offsets,
             .vectors = vectors,
             .labels = labels,
+            .mmap_ptr = mmap_ptr,
+            .mmap_len = size,
         };
         return self;
     }
 
     pub fn deinit(ptr: *anyopaque) void {
         const self: *IvfStore = @ptrCast(@alignCast(ptr));
-        self.allocator.free(self.centroids);
+        if (self.mmap_ptr) |m| {
+            _ = linux.syscall2(.munmap, @intFromPtr(m), self.mmap_len);
+        }
         self.allocator.free(self.offsets);
-        self.allocator.free(self.vectors);
-        self.allocator.free(self.labels);
         self.allocator.destroy(self);
     }
 
-    pub fn search(ptr: *anyopaque, query: Vector14, results: []SearchResult) !usize {
+    pub fn search(ptr: *anyopaque, query: Vector14, results: []SearchResult, nprobe_opt: ?u32) !usize {
         const self: *IvfStore = @ptrCast(@alignCast(ptr));
         const k = results.len;
-        const nprobe = self.header.nprobe;
+        const nprobe = nprobe_opt orelse self.header.nprobe;
 
-        // Find top nprobe clusters; K=1000 is the hard upper bound
+        // Find top nprobe clusters
         var top: [1000]struct { dist: f32, cid: u32 } = undefined;
         var n_top: usize = 0;
         const query_vec: @Vector(14, f32) = query;
@@ -104,11 +117,9 @@ pub const IvfStore = struct {
             }
         }
 
-        // Build mask for missing query dimensions (-1.0)
         const v_neg: @Vector(14, f32) = @splat(0.0);
         const q_present = query_vec >= v_neg;
 
-        // Scan clusters; maintain k nearest using max-slot tracking
         var count: usize = 0;
         var max_dist: f32 = std.math.floatMax(f32);
         var max_idx: usize = 0;
@@ -118,24 +129,18 @@ pub const IvfStore = struct {
             const start = self.offsets[cid];
             const end = self.offsets[cid + 1];
 
-            // Prefetch next cluster's vectors and labels
             if (ci + 1 < n_top) {
                 const next_start = self.offsets[top[ci + 1].cid];
                 if (next_start < self.vectors.len) {
                     @prefetch(&self.vectors[next_start], .{ .rw = .read, .locality = 2, .cache = .data });
-                    @prefetch(&self.labels[next_start], .{ .rw = .read, .locality = 2, .cache = .data });
                 }
             }
 
             for (self.vectors[start..end], self.labels[start..end]) |*vec_arr, label| {
-                // Convert stored f16 to f32 for distance computation
                 const vec_f16: @Vector(14, f16) = vec_arr.*;
                 const vec_f32: @Vector(14, f32) = vec_f16;
-
-                // Only valid (≥ 0) dimensions count. If missing in either query or stored vector, difference is 0
                 const v_present = vec_f32 >= v_neg;
                 const present = q_present & v_present;
-
                 const diff = query_vec - vec_f32;
                 const final_diff = @select(f32, present, diff, @as(@Vector(14, f32), @splat(0.0)));
                 const df = @reduce(.Add, final_diff * final_diff);
@@ -166,7 +171,6 @@ pub const IvfStore = struct {
                 }
             }
         }
-
         return count;
     }
 

@@ -10,12 +10,12 @@ pub const VectorStore = struct {
     pub const VTable = struct {
         // Fill caller-provided buffer with up to results.len nearest neighbors.
         // Returns the actual number of results written.
-        search: *const fn (ptr: *anyopaque, query: Vector14, results: []SearchResult) anyerror!usize,
+        search: *const fn (ptr: *anyopaque, query: Vector14, results: []SearchResult, nprobe: ?u32) anyerror!usize,
         deinit: *const fn (ptr: *anyopaque) void,
     };
 
-    pub fn search(self: VectorStore, query: Vector14, results: []SearchResult) !usize {
-        return self.vtable.search(self.ptr, query, results);
+    pub fn search(self: VectorStore, query: Vector14, results: []SearchResult, nprobe: ?u32) !usize {
+        return self.vtable.search(self.ptr, query, results, nprobe);
     }
 
     pub fn deinit(self: VectorStore) void {
