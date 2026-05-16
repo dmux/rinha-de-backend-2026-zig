@@ -41,6 +41,7 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 COPY --from=data-processor /data/ivf_index.bin /data/ivf_index.bin
 COPY --from=api-builder /app/zig-out/bin/fraud-api /fraud-api
 COPY --from=api-builder /app/zig-out/bin/zig-proxy /zig-proxy
+RUN chmod +x /fraud-api /zig-proxy
 COPY resources/mcc_risk.json /resources/mcc_risk.json
 EXPOSE 8080 9999
 ENTRYPOINT ["/fraud-api"]
