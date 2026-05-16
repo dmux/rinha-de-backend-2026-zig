@@ -130,3 +130,4 @@ test {
     _ = dom.scorer;
     _ = dom.ivf_store;
 }
+
