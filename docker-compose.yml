@@ -3,6 +3,9 @@ services:
     image: ghcr.io/dmux/rinha-de-backend-2026-zig:latest
     container_name: proxy
     entrypoint: ["/zig-proxy"]
+    environment:
+      - UPSTREAMS=/sockets/api1.sock,/sockets/api2.sock
+      - PORT=9999
     volumes:
       - sockets:/sockets
     depends_on:
@@ -12,12 +15,18 @@ services:
         condition: service_healthy
     ports:
       - "9999:9999"
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     cpu_period: 100000
-    cpu_quota: 5000
+    cpu_quota: 10000 # 0.10 CPU
     deploy:
       resources:
         limits:
-          memory: 100M
+          memory: 30M
     networks:
       - rinha-network
 
@@ -32,12 +41,18 @@ services:
       - NPROBE=15
     volumes:
       - sockets:/sockets
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     cpu_period: 100000
-    cpu_quota: 47500
+    cpu_quota: 45000 # 0.45 CPU
     deploy:
       resources:
         limits:
-          memory: 150M
+          memory: 160M
     healthcheck:
       test: ["CMD", "curl", "-sf", "--unix-socket", "/sockets/api1.sock", "http://localhost/ready"]
       interval: 10s
@@ -58,12 +73,18 @@ services:
       - NPROBE=15
     volumes:
       - sockets:/sockets
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     cpu_period: 100000
-    cpu_quota: 47500
+    cpu_quota: 45000 # 0.45 CPU
     deploy:
       resources:
         limits:
-          memory: 150M
+          memory: 160M
     healthcheck:
       test: ["CMD", "curl", "-sf", "--unix-socket", "/sockets/api2.sock", "http://localhost/ready"]
       interval: 10s
