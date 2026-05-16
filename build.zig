@@ -21,10 +21,21 @@ pub fn build(b: *std.Build) void {
         .cpu_features_add = haswell_features,
     };
 
+<<<<<<< Updated upstream
     // Use the specific Haswell target for the release build if requested
     const target_cpu = b.option([]const u8, "target_cpu", "Specific target CPU architecture (e.g. haswell)") orelse "";
     const resolved_target = if (std.mem.eql(u8, target_cpu, "haswell"))
         b.resolveTargetQuery(target_query)
+=======
+    // Use specific CPU targets if requested (e.g. for SIMD optimizations in Rinha)
+    const target_cpu = b.option([]const u8, "target_cpu", "Specific target CPU architecture (e.g. haswell, x86_64_v2, x86_64_v3)") orelse "";
+    const resolved_target = if (std.mem.eql(u8, target_cpu, "haswell"))
+        b.resolveTargetQuery(target_query)
+    else if (std.mem.eql(u8, target_cpu, "x86_64_v2"))
+        b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .linux, .cpu_model = .{ .explicit = &std.Target.x86.cpu.x86_64_v2 } })
+    else if (std.mem.eql(u8, target_cpu, "x86_64_v3"))
+        b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .linux, .cpu_model = .{ .explicit = &std.Target.x86.cpu.x86_64_v3 } })
+>>>>>>> Stashed changes
     else
         target;
 
@@ -34,7 +45,11 @@ pub fn build(b: *std.Build) void {
 
     // Dependencies
     const httpz = b.dependency("httpz", .{
+<<<<<<< Updated upstream
         .target = target,
+=======
+        .target = resolved_target,
+>>>>>>> Stashed changes
         .optimize = optimize,
     });
 

@@ -56,7 +56,12 @@ pub fn main(init: std.process.Init) !void {
     defer allocator.free(mcc_json);
     const mcc_risk = try MccRisk.fromJson(mcc_json, allocator);
 
+<<<<<<< Updated upstream
     const service = FraudService.init(vs, mcc_risk, threshold);
+=======
+    var active_reqs = std.atomic.Value(u32).init(0);
+    const service = FraudService.init(vs, mcc_risk, threshold, &active_reqs, 5, 20);
+>>>>>>> Stashed changes
 
     // Warm-up: 2000 varied queries to pre-populate caches and warm the engine
     std.debug.print("Warming up engine (2000 searches)...\n", .{});
@@ -84,6 +89,11 @@ pub fn main(init: std.process.Init) !void {
 
     const address = if (api_socket) |s| blk: {
         std.debug.print("Using Unix socket: {s}\n", .{s});
+<<<<<<< Updated upstream
+=======
+        // Ensure the socket file is removed before binding to avoid "Address already in use"
+        std.Io.Dir.cwd().deleteFile(init.io, s) catch {};
+>>>>>>> Stashed changes
         break :blk httpz.Config.Address{ .unix = s };
     } else blk: {
         std.debug.print("Using TCP port {d}\n", .{port});

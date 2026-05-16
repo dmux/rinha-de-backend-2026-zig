@@ -32,12 +32,27 @@ pub fn main(init: std.process.Init) !void {
     try loadVectors(init, input_path, &vectors, &labels);
     std.debug.print("Loaded {d} vectors\n", .{vectors.items.len});
 
+<<<<<<< Updated upstream
     std.debug.print("Running K-means++ (K={d}, iter={d})...\n", .{ K, ITERATIONS });
     const centroids = try runKMeans(allocator, vectors.items);
     defer allocator.free(centroids);
 
     std.debug.print("Assigning vectors to clusters...\n", .{});
     var clusters = try allocator.alloc(std.ArrayListUnmanaged(u32), K);
+=======
+    var k_clusters: usize = K;
+    if (vectors.items.len < K * 10) {
+        k_clusters = @max(1, vectors.items.len / 10);
+        std.debug.print("Small dataset detected, adjusting K to {d}\n", .{k_clusters});
+    }
+
+    std.debug.print("Running K-means++ (K={d}, iter={d})...\n", .{ k_clusters, ITERATIONS });
+    const centroids = try runKMeans(allocator, vectors.items, k_clusters);
+    defer allocator.free(centroids);
+
+    std.debug.print("Assigning vectors to clusters...\n", .{});
+    var clusters = try allocator.alloc(std.ArrayListUnmanaged(u32), k_clusters);
+>>>>>>> Stashed changes
     for (clusters) |*c| c.* = .empty;
     defer {
         for (clusters) |*c| c.deinit(allocator);
@@ -64,16 +79,27 @@ pub fn main(init: std.process.Init) !void {
         if (c.items.len > max_size) max_size = c.items.len;
         total += c.items.len;
     }
+<<<<<<< Updated upstream
     const mean_size = total / K;
     const ratio: f64 = @as(f64, @floatFromInt(max_size)) / @as(f64, @floatFromInt(mean_size));
     std.debug.print("Cluster stats: mean={d}, max={d}, ratio={d:.2}\n", .{ mean_size, max_size, ratio });
     if (ratio > 5.0) {
+=======
+    const mean_size = total / k_clusters;
+    const ratio: f64 = @as(f64, @floatFromInt(max_size)) / @as(f64, @floatFromInt(mean_size));
+    std.debug.print("Cluster stats: mean={d}, max={d}, ratio={d:.2}\n", .{ mean_size, max_size, ratio });
+    if (ratio > 5.0 and vectors.items.len > 1000) {
+>>>>>>> Stashed changes
         std.debug.print("ERROR: clusters badly unbalanced (ratio={d:.2} > 5.0). Build failed.\n", .{ratio});
         std.process.exit(1);
     }
 
     std.debug.print("Writing index to {s}...\n", .{output_path});
+<<<<<<< Updated upstream
     try writeIndex(init, output_path, centroids, clusters, vectors.items, labels.items);
+=======
+    try writeIndex(init, output_path, centroids, clusters, vectors.items, labels.items, k_clusters);
+>>>>>>> Stashed changes
     std.debug.print("Done.\n", .{});
 }
 
@@ -92,6 +118,7 @@ fn loadVectors(
     defer allocator.free(file_buf);
     var file_reader = file.reader(init.io, file_buf);
 
+<<<<<<< Updated upstream
     const decomp_buf = try allocator.alloc(u8, 1 << 16);
     defer allocator.free(decomp_buf);
     var decomp = std.compress.flate.Decompress.init(&file_reader.interface, .gzip, decomp_buf);
@@ -104,6 +131,25 @@ fn loadVectors(
 
     // Parse JSON using scanner on complete input
     var scanner = std.json.Scanner.initCompleteInput(allocator, decompressed);
+=======
+    const data = if (std.mem.endsWith(u8, path, ".gz")) blk: {
+        const decomp_buf = try allocator.alloc(u8, 1 << 16);
+        defer allocator.free(decomp_buf);
+        var decomp = std.compress.flate.Decompress.init(&file_reader.interface, .gzip, decomp_buf);
+
+        var aw: std.Io.Writer.Allocating = .init(allocator);
+        _ = try decomp.reader.streamRemaining(&aw.writer);
+        break :blk try aw.toOwnedSlice();
+    } else blk: {
+        var aw: std.Io.Writer.Allocating = .init(allocator);
+        _ = try file_reader.interface.streamRemaining(&aw.writer);
+        break :blk try aw.toOwnedSlice();
+    };
+    defer allocator.free(data);
+
+    // Parse JSON using scanner on complete input
+    var scanner = std.json.Scanner.initCompleteInput(allocator, data);
+>>>>>>> Stashed changes
     defer scanner.deinit();
 
     try vectors.ensureTotalCapacity(allocator, 3_100_000);
@@ -174,8 +220,13 @@ fn loadVectors(
     }
 }
 
+<<<<<<< Updated upstream
 fn runKMeans(allocator: std.mem.Allocator, vecs: []const Vector14) ![]Vector14 {
     var centroids = try allocator.alloc(Vector14, K);
+=======
+fn runKMeans(allocator: std.mem.Allocator, vecs: []const Vector14, k_clusters: usize) ![]Vector14 {
+    var centroids = try allocator.alloc(Vector14, k_clusters);
+>>>>>>> Stashed changes
 
     var rng = std.Random.DefaultPrng.init(0xdeadbeefcafe1337);
     const random = rng.random();
@@ -187,7 +238,11 @@ fn runKMeans(allocator: std.mem.Allocator, vecs: []const Vector14) ![]Vector14 {
     defer allocator.free(min_dists);
     @memset(min_dists, std.math.floatMax(f32));
 
+<<<<<<< Updated upstream
     for (1..K) |k| {
+=======
+    for (1..k_clusters) |k| {
+>>>>>>> Stashed changes
         // Update min distances using the newly added centroid
         var total: f64 = 0;
         for (vecs, 0..) |v, vi| {
@@ -220,8 +275,13 @@ fn runKMeans(allocator: std.mem.Allocator, vecs: []const Vector14) ![]Vector14 {
         for (vecs, 0..) |v, vi| {
             var best_d: f32 = std.math.floatMax(f32);
             var best_k: u32 = 0;
+<<<<<<< Updated upstream
             for (centroids, 0..) |c, ki| {
                 const d = l2dist(v, c);
+=======
+            for (0..k_clusters) |ki| {
+                const d = l2dist(v, centroids[ki]);
+>>>>>>> Stashed changes
                 if (d < best_d) {
                     best_d = d;
                     best_k = @intCast(ki);
@@ -231,11 +291,19 @@ fn runKMeans(allocator: std.mem.Allocator, vecs: []const Vector14) ![]Vector14 {
         }
 
         // Update step (accumulate in f64 to avoid overflow)
+<<<<<<< Updated upstream
         var accums = try allocator.alloc(@Vector(14, f64), K);
         defer allocator.free(accums);
         @memset(accums, @splat(0.0));
 
         var counts = try allocator.alloc(u64, K);
+=======
+        var accums = try allocator.alloc(@Vector(14, f64), k_clusters);
+        defer allocator.free(accums);
+        @memset(accums, @splat(0.0));
+
+        var counts = try allocator.alloc(u64, k_clusters);
+>>>>>>> Stashed changes
         defer allocator.free(counts);
         @memset(counts, 0);
 
@@ -245,7 +313,11 @@ fn runKMeans(allocator: std.mem.Allocator, vecs: []const Vector14) ![]Vector14 {
             counts[ki] += 1;
         }
 
+<<<<<<< Updated upstream
         for (0..K) |ki| {
+=======
+        for (0..k_clusters) |ki| {
+>>>>>>> Stashed changes
             if (counts[ki] > 0) {
                 const n: @Vector(14, f64) = @splat(@floatFromInt(counts[ki]));
                 centroids[ki] = @floatCast(accums[ki] / n);
@@ -264,6 +336,10 @@ fn writeIndex(
     clusters: []const std.ArrayListUnmanaged(u32),
     vecs: []const Vector14,
     lbls: []const bool,
+<<<<<<< Updated upstream
+=======
+    k_clusters: usize,
+>>>>>>> Stashed changes
 ) !void {
     const allocator = init.gpa;
 
@@ -278,7 +354,11 @@ fn writeIndex(
     const header = IndexHeader{
         .version = 2, // version 2 = f16 vector storage
         .n_vectors = @intCast(vecs.len),
+<<<<<<< Updated upstream
         .n_centroids = K,
+=======
+        .n_centroids = @intCast(k_clusters),
+>>>>>>> Stashed changes
         .nprobe = 15,
     };
     try w.writeAll(std.mem.asBytes(&header));
