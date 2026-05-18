@@ -72,6 +72,33 @@ pub fn vectorize(req: *const FraudRequest, mcc_risk: *const MccRisk) Vector14 {
     return v;
 }
 
+// Quantize f32 vector → i16 with SCALE=10000; sentinel for -1.0 dimensions
+pub fn vectorizeI16(req: *const FraudRequest, mcc_risk: *const MccRisk) types.Vector16i16 {
+    const f: [14]f32 = vectorize(req, mcc_risk); // coerce vector → array for runtime indexing
+    var out: types.Vector16i16 = [_]i16{0} ** 16;
+    for (0..14) |i| {
+        out[i] = if (f[i] < -0.5)
+            types.SENTINEL
+        else
+            @intCast(@min(10000, @max(-9999, @as(i32, @intFromFloat(@round(f[i] * @as(f32, @floatFromInt(types.SCALE))))))));
+    }
+    return out;
+}
+
+// 8-bit partition key derived from binary feature thresholds
+pub fn partitionKey(v: types.Vector16i16) u8 {
+    var key: u8 = 0;
+    if (v[5] != types.SENTINEL) key |= 1;   // has last_transaction
+    if (v[9] > 5000)  key |= 2;             // is_online
+    if (v[10] > 5000) key |= 4;             // card_present
+    if (v[11] > 5000) key |= 8;             // unknown_merchant
+    if (v[12] < 3300) key |= 16;            // mcc_risk low (<0.33)
+    if (v[12] > 6600) key |= 32;            // mcc_risk high (>0.66)
+    if (v[2] > 4000)  key |= 64;            // amount anomaly (>4x avg)
+    if (v[8] > 2500)  key |= 128;           // high velocity (>5 tx/24h)
+    return key;
+}
+
 fn isUnknownMerchant(merchant_id: []const u8, known: [][]const u8) bool {
     for (known) |k| {
         if (std.mem.eql(u8, k, merchant_id)) return false;

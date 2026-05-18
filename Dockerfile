@@ -21,7 +21,6 @@ COPY src/adapters/ src/adapters/
 COPY src/application/ src/application/
 COPY src/domain.zig src/
 COPY tools/ tools/
-<<<<<<< Updated upstream
 RUN zig build preprocess -Doptimize=ReleaseFast -Dtarget=x86_64-linux-musl -Dtarget_cpu=haswell
 
 # Stage 2: Data Preprocessing (Only rebuilds if reference data or tools change)
@@ -29,40 +28,20 @@ FROM debian:bookworm-slim AS data-processor
 COPY resources/references.json.gz /resources/references.json.gz
 COPY --from=tools-builder /app/zig-out/bin/preprocess /preprocess
 RUN mkdir -p /data && \
-    /preprocess /resources/references.json.gz /data/ivf_index.bin
-=======
-RUN zig build preprocess -Doptimize=ReleaseFast -Dtarget=x86_64-linux-musl -Dtarget_cpu=x86_64_v2
-
-# Stage 2: Data Preprocessing (Only rebuilds if reference data or tools change)
-FROM debian:bookworm-slim AS data-processor
-COPY resources/example-references.json /resources/example-references.json
-COPY --from=tools-builder /app/zig-out/bin/preprocess /preprocess
-RUN mkdir -p /data && \
-    /preprocess /resources/example-references.json /data/ivf_index.bin
->>>>>>> Stashed changes
+    /preprocess /resources/references.json.gz /data/specialist_index.bin
 
 # Stage 3: Build APIs (Rebuilds on any src/ change)
 FROM zig-base AS api-builder
 COPY src/ src/
-<<<<<<< Updated upstream
-RUN zig build api -Doptimize=ReleaseFast -Dtarget=x86_64-linux-musl -Dtarget_cpu=x86_64_v3
+RUN zig build api -Doptimize=ReleaseFast -Dtarget=x86_64-linux-musl -Dtarget_cpu=haswell
 
 # Stage 4: Combined Runtime
 FROM ubuntu:24.04 AS runtime
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-COPY --from=data-processor /data/ivf_index.bin /data/ivf_index.bin
+COPY --from=data-processor /data/specialist_index.bin /data/specialist_index.bin
 COPY --from=api-builder /app/zig-out/bin/fraud-api /fraud-api
 COPY --from=api-builder /app/zig-out/bin/zig-proxy /zig-proxy
 RUN chmod +x /fraud-api /zig-proxy
-=======
-RUN zig build api -Doptimize=ReleaseFast -Dtarget=x86_64-linux-musl -Dtarget_cpu=x86_64_v2
-
-# Stage 4: Combined Runtime (Distroless for minimal size)
-FROM gcr.io/distroless/static-debian12 AS runtime
-COPY --from=data-processor /data/ivf_index.bin /data/ivf_index.bin
-COPY --from=api-builder /app/zig-out/bin/fraud-api /fraud-api
-COPY --from=api-builder /app/zig-out/bin/zig-proxy /zig-proxy
->>>>>>> Stashed changes
 COPY resources/mcc_risk.json /resources/mcc_risk.json
 EXPOSE 8080 9999
 ENTRYPOINT ["/fraud-api"]

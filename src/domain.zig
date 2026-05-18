@@ -3,4 +3,5 @@ pub const vectorizer = @import("domain/vectorizer.zig");
 pub const scorer = @import("domain/scorer.zig");
 pub const ivf_store = @import("adapters/vector/ivf_store.zig");
 pub const brute_force = @import("adapters/vector/brute_force.zig");
+pub const specialist_store = @import("adapters/vector/specialist_store.zig");
 pub const fraud_service = @import("application/fraud_service.zig");

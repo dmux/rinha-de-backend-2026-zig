@@ -21,22 +21,11 @@ const SPLICE_F_MOVE = 1;
 var peer_map: [MAX_FDS]i32 = undefined;
 var pipe_map: [MAX_FDS][2]i32 = undefined;
 
-<<<<<<< Updated upstream
-pub fn main() !void {
-=======
 pub fn main(init: std.process.Init) !void {
->>>>>>> Stashed changes
     // Fixed size array for backends (max 8 for Rinha purposes)
     var backends_buf: [8][]const u8 = undefined;
     var backends_count: usize = 0;
 
-<<<<<<< Updated upstream
-    // Direct env access to avoid complex std.process in 0.16.0
-    // Default values if UPSTREAMS is missing
-    backends_buf[0] = "/sockets/api1.sock";
-    backends_buf[1] = "/sockets/api2.sock";
-    backends_count = 2;
-=======
     // Simple env parsing for UPSTREAMS (comma-separated list of unix paths)
     if (init.environ_map.get("UPSTREAMS")) |env_val| {
         var it = std.mem.splitScalar(u8, env_val, ',');
@@ -52,7 +41,6 @@ pub fn main(init: std.process.Init) !void {
         backends_buf[1] = "/sockets/api2.sock";
         backends_count = 2;
     }
->>>>>>> Stashed changes
 
     for (0..MAX_FDS) |idx| {
         peer_map[idx] = -1;

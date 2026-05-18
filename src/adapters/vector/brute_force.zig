@@ -3,6 +3,7 @@ const types = @import("../../domain/types.zig");
 const vector_store = @import("../../ports/vector_store.zig");
 
 const Vector14 = types.Vector14;
+const Vector16i16 = types.Vector16i16;
 const SearchResult = types.SearchResult;
 const IndexHeader = types.IndexHeader;
 
@@ -87,10 +88,19 @@ pub const BruteForceStore = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn search(ptr: *anyopaque, query: Vector14, results: []SearchResult, _: ?u32) !usize {
+    pub fn search(ptr: *anyopaque, query_i16: Vector16i16, results: []SearchResult) !usize {
         const self: *BruteForceStore = @ptrCast(@alignCast(ptr));
         const k = results.len;
-        const query_vec: @Vector(14, f32) = query;
+
+        // Dequantize i16 → f32
+        var query_f32: [14]f32 = undefined;
+        for (0..14) |i| {
+            query_f32[i] = if (query_i16[i] == types.SENTINEL)
+                -1.0
+            else
+                @as(f32, @floatFromInt(query_i16[i])) / @as(f32, @floatFromInt(types.SCALE));
+        }
+        const query_vec: @Vector(14, f32) = query_f32;
         const v_neg: @Vector(14, f32) = @splat(0.0);
         const q_present = query_vec >= v_neg;
 
@@ -137,12 +147,6 @@ pub const BruteForceStore = struct {
     }
 
     pub fn vectorStore(self: *BruteForceStore) vector_store.VectorStore {
-        return .{
-            .ptr = self,
-            .vtable = &.{
-                .search = BruteForceStore.search,
-                .deinit = BruteForceStore.deinit,
-            },
-        };
+        return .{ .ptr = self, .vtable = &.{ .search = BruteForceStore.search, .deinit = BruteForceStore.deinit } };
     }
 };

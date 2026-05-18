@@ -2,11 +2,14 @@ const std = @import("std");
 const domain = @import("domain");
 const types = domain.types;
 
-const Vector14 = types.Vector14;
-const IndexHeader = types.IndexHeader;
+const Vector16i16 = types.Vector16i16;
+const SpecialistHeader = types.SpecialistHeader;
+const PartitionEntry = types.PartitionEntry;
+const KDNode = types.KDNode;
+const VecBlock = types.VecBlock;
+const SENTINEL = types.SENTINEL;
 
-const K = 1000;
-const ITERATIONS = 100;
+const LEAF_SIZE: u32 = 32; // vectors per leaf (4 blocks of 8)
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
@@ -24,90 +27,295 @@ pub fn main(init: std.process.Init) !void {
     };
 
     std.debug.print("Loading vectors from {s}...\n", .{input_path});
-    var vectors: std.ArrayListUnmanaged(Vector14) = .empty;
-    var labels: std.ArrayListUnmanaged(bool) = .empty;
+    var vectors: std.ArrayListUnmanaged(Vector16i16) = .empty;
+    var labels: std.ArrayListUnmanaged(u8) = .empty;
     defer vectors.deinit(allocator);
     defer labels.deinit(allocator);
 
     try loadVectors(init, input_path, &vectors, &labels);
     std.debug.print("Loaded {d} vectors\n", .{vectors.items.len});
 
-<<<<<<< Updated upstream
-    std.debug.print("Running K-means++ (K={d}, iter={d})...\n", .{ K, ITERATIONS });
-    const centroids = try runKMeans(allocator, vectors.items);
-    defer allocator.free(centroids);
+    const n = vectors.items.len;
 
-    std.debug.print("Assigning vectors to clusters...\n", .{});
-    var clusters = try allocator.alloc(std.ArrayListUnmanaged(u32), K);
-=======
-    var k_clusters: usize = K;
-    if (vectors.items.len < K * 10) {
-        k_clusters = @max(1, vectors.items.len / 10);
-        std.debug.print("Small dataset detected, adjusting K to {d}\n", .{k_clusters});
+    // Step 1: Compute partition keys and group vectors into 256 buckets
+    std.debug.print("Partitioning into 256 buckets...\n", .{});
+    var buckets: [256]std.ArrayListUnmanaged(u32) = undefined;
+    for (&buckets) |*b| b.* = .empty;
+    defer for (&buckets) |*b| b.deinit(allocator);
+
+    for (0..n) |i| {
+        const key = domain.vectorizer.partitionKey(vectors.items[i]);
+        try buckets[key].append(allocator, @intCast(i));
     }
 
-    std.debug.print("Running K-means++ (K={d}, iter={d})...\n", .{ k_clusters, ITERATIONS });
-    const centroids = try runKMeans(allocator, vectors.items, k_clusters);
-    defer allocator.free(centroids);
+    // Print partition stats
+    var non_empty: u32 = 0;
+    var max_bucket: u32 = 0;
+    for (&buckets) |*b| {
+        if (b.items.len > 0) non_empty += 1;
+        if (b.items.len > max_bucket) max_bucket = @intCast(b.items.len);
+    }
+    std.debug.print("Non-empty partitions: {d}/256, max bucket: {d}\n", .{ non_empty, max_bucket });
 
-    std.debug.print("Assigning vectors to clusters...\n", .{});
-    var clusters = try allocator.alloc(std.ArrayListUnmanaged(u32), k_clusters);
->>>>>>> Stashed changes
-    for (clusters) |*c| c.* = .empty;
-    defer {
-        for (clusters) |*c| c.deinit(allocator);
-        allocator.free(clusters);
+    // Step 2: Build KD-tree for each partition
+    std.debug.print("Building KD-trees...\n", .{});
+
+    var all_nodes: std.ArrayListUnmanaged(KDNode) = .empty;
+    defer all_nodes.deinit(allocator);
+    var all_blocks: std.ArrayListUnmanaged(VecBlock) = .empty;
+    defer all_blocks.deinit(allocator);
+
+    // Pre-allocate with generous capacities
+    try all_nodes.ensureTotalCapacity(allocator, n / 8);
+    try all_blocks.ensureTotalCapacity(allocator, n / 8 + 1024);
+
+    var partitions: [256]PartitionEntry = std.mem.zeroes([256]PartitionEntry);
+
+    for (0..256) |pi| {
+        const bucket = &buckets[pi];
+        const node_start: u32 = @intCast(all_nodes.items.len);
+        const block_start: u32 = @intCast(all_blocks.items.len);
+
+        partitions[pi].node_start = node_start;
+        partitions[pi].block_start = block_start;
+
+        if (bucket.items.len == 0) {
+            partitions[pi].node_count = 0;
+            partitions[pi].block_count = 0;
+            partitions[pi].root = 0;
+            continue;
+        }
+
+        // Build a temporary sorted index array for this partition
+        const idx_slice = try allocator.alloc(u32, bucket.items.len);
+        defer allocator.free(idx_slice);
+        @memcpy(idx_slice, bucket.items);
+
+        // Compute bounding box for the whole partition
+        computeBoundingBox(vectors.items, idx_slice, &partitions[pi].min, &partitions[pi].max);
+
+        // Build KD-tree recursively (iterative via explicit stack)
+        const root = try buildKDTree(
+            allocator,
+            vectors.items,
+            labels.items,
+            idx_slice,
+            &all_nodes,
+            &all_blocks,
+        );
+        partitions[pi].root = root; // absolute index into all_nodes
+        partitions[pi].node_count = @intCast(all_nodes.items.len - node_start);
+        partitions[pi].block_count = @intCast(all_blocks.items.len - block_start);
     }
 
-    for (vectors.items, 0..) |v, idx| {
-        var min_dist: f32 = std.math.floatMax(f32);
-        var best: usize = 0;
-        for (centroids, 0..) |c, ki| {
-            const d = l2dist(v, c);
-            if (d < min_dist) {
-                min_dist = d;
-                best = ki;
+    std.debug.print("Built {d} nodes, {d} blocks\n", .{ all_nodes.items.len, all_blocks.items.len });
+
+    // Step 3: Serialize to file
+    std.debug.print("Writing index to {s}...\n", .{output_path});
+    try writeIndex(init, output_path, &partitions, all_nodes.items, all_blocks.items, @intCast(n));
+    std.debug.print("Done.\n", .{});
+}
+
+// Build KD-tree for a set of vector indices; returns absolute node index of root
+fn buildKDTree(
+    allocator: std.mem.Allocator,
+    vecs: []const Vector16i16,
+    lbls: []const u8,
+    indices: []u32,
+    nodes: *std.ArrayListUnmanaged(KDNode),
+    blocks: *std.ArrayListUnmanaged(VecBlock),
+) !u32 {
+    const BuildTask = struct {
+        indices_start: u32,
+        indices_end: u32,
+        node_idx: u32,
+    };
+
+    // Flat work queue (avoids deep recursion for 3M vectors)
+    var work: std.ArrayListUnmanaged(BuildTask) = .empty;
+    defer work.deinit(allocator);
+
+    // Reserve a slot for root node
+    const root_idx: u32 = @intCast(nodes.items.len);
+    try nodes.append(allocator, std.mem.zeroes(KDNode));
+    try work.append(allocator, .{ .indices_start = 0, .indices_end = @intCast(indices.len), .node_idx = root_idx });
+
+    while (work.pop()) |task| {
+        const count = task.indices_end - task.indices_start;
+        const idx_slice = indices[task.indices_start..task.indices_end];
+
+        // Compute bounding box for this node
+        var bb_min: [16]i16 = undefined;
+        var bb_max: [16]i16 = undefined;
+        computeBoundingBox(vecs, idx_slice, &bb_min, &bb_max);
+
+        nodes.items[task.node_idx].min = bb_min;
+        nodes.items[task.node_idx].max = bb_max;
+
+        if (count <= LEAF_SIZE) {
+            // Leaf node: pack vectors into VecBlocks
+            const block_start: u32 = @intCast(blocks.items.len);
+            try packBlocks(allocator, vecs, lbls, idx_slice, blocks);
+            nodes.items[task.node_idx].left = 0xFFFFFFFF;
+            nodes.items[task.node_idx].right = 0xFFFFFFFF;
+            nodes.items[task.node_idx].start = block_start;
+            nodes.items[task.node_idx].count = @intCast(blocks.items.len - block_start);
+        } else {
+            // Internal node: split on dimension with maximum variance
+            const split_dim = findSplitDim(vecs, idx_slice, &bb_min, &bb_max);
+            const mid = count / 2;
+
+            // Partial sort (nth_element equivalent): median split
+            partialSort(vecs, idx_slice, split_dim, mid);
+
+            // Reserve child nodes
+            const left_idx: u32 = @intCast(nodes.items.len);
+            try nodes.append(allocator, std.mem.zeroes(KDNode));
+            const right_idx: u32 = @intCast(nodes.items.len);
+            try nodes.append(allocator, std.mem.zeroes(KDNode));
+
+            nodes.items[task.node_idx].left = left_idx;
+            nodes.items[task.node_idx].right = right_idx;
+            nodes.items[task.node_idx].start = 0;
+            nodes.items[task.node_idx].count = 0;
+
+            try work.append(allocator, .{ .indices_start = task.indices_start, .indices_end = task.indices_start + mid, .node_idx = left_idx });
+            try work.append(allocator, .{ .indices_start = task.indices_start + mid, .indices_end = task.indices_end, .node_idx = right_idx });
+        }
+    }
+
+    return root_idx;
+}
+
+fn computeBoundingBox(vecs: []const Vector16i16, indices: []const u32, bb_min: *[16]i16, bb_max: *[16]i16) void {
+    @memset(bb_min, std.math.maxInt(i16));
+    @memset(bb_max, std.math.minInt(i16));
+
+    for (indices) |idx| {
+        const v = &vecs[idx];
+        // Include SENTINEL (-10000) in the bounding box so lowerBound can
+        // prune subtrees where query-has-last-tx but node-doesn't (or vice versa).
+        for (0..14) |d| {
+            if (v[d] < bb_min[d]) bb_min[d] = v[d];
+            if (v[d] > bb_max[d]) bb_max[d] = v[d];
+        }
+    }
+    // Padding dims 14,15 with 0
+    bb_min[14] = 0;
+    bb_max[14] = 0;
+    bb_min[15] = 0;
+    bb_max[15] = 0;
+}
+
+// Find the dimension with the largest spread (max-min) for splitting.
+// SENTINEL (-10000) is included in the range, so dims where all vectors have
+// SENTINEL have spread=0 and are skipped naturally.
+fn findSplitDim(vecs: []const Vector16i16, indices: []const u32, bb_min: *const [16]i16, bb_max: *const [16]i16) u8 {
+    _ = vecs;
+    _ = indices;
+    var best_dim: u8 = 0;
+    var best_spread: i32 = -1;
+    for (0..14) |d| {
+        const spread: i32 = @as(i32, bb_max[d]) - @as(i32, bb_min[d]);
+        if (spread <= 0) continue; // all-same value (including all-SENTINEL) → no useful split
+        if (spread > best_spread) {
+            best_spread = spread;
+            best_dim = @intCast(d);
+        }
+    }
+    return best_dim;
+}
+
+// Partial sort to put median at position mid; elements before mid <= median, after >= median
+fn partialSort(vecs: []const Vector16i16, indices: []u32, dim: u8, mid: usize) void {
+    // Introselect / quickselect variant
+    var lo: usize = 0;
+    var hi: usize = indices.len - 1;
+
+    while (lo < hi) {
+        // Median-of-three pivot
+        const m = lo + (hi - lo) / 2;
+        const pivot_val = getVal(vecs[indices[m]], dim);
+
+        // Three-way partition
+        var i = lo;
+        var j = lo;
+        var k = hi;
+
+        while (j <= k) {
+            const v = getVal(vecs[indices[j]], dim);
+            if (v < pivot_val) {
+                const tmp = indices[i];
+                indices[i] = indices[j];
+                indices[j] = tmp;
+                i += 1;
+                j += 1;
+            } else if (v > pivot_val) {
+                const tmp = indices[j];
+                indices[j] = indices[k];
+                indices[k] = tmp;
+                if (k == 0) break;
+                k -= 1;
+            } else {
+                j += 1;
             }
         }
-        try clusters[best].append(allocator, @intCast(idx));
-    }
 
-    // Log cluster balance stats
-    var max_size: usize = 0;
-    var total: usize = 0;
-    for (clusters) |c| {
-        if (c.items.len > max_size) max_size = c.items.len;
-        total += c.items.len;
+        if (mid < i) {
+            hi = if (i > 0) i - 1 else 0;
+        } else if (mid >= j) {
+            lo = j;
+        } else {
+            break; // mid is in the equal-to-pivot region
+        }
     }
-<<<<<<< Updated upstream
-    const mean_size = total / K;
-    const ratio: f64 = @as(f64, @floatFromInt(max_size)) / @as(f64, @floatFromInt(mean_size));
-    std.debug.print("Cluster stats: mean={d}, max={d}, ratio={d:.2}\n", .{ mean_size, max_size, ratio });
-    if (ratio > 5.0) {
-=======
-    const mean_size = total / k_clusters;
-    const ratio: f64 = @as(f64, @floatFromInt(max_size)) / @as(f64, @floatFromInt(mean_size));
-    std.debug.print("Cluster stats: mean={d}, max={d}, ratio={d:.2}\n", .{ mean_size, max_size, ratio });
-    if (ratio > 5.0 and vectors.items.len > 1000) {
->>>>>>> Stashed changes
-        std.debug.print("ERROR: clusters badly unbalanced (ratio={d:.2} > 5.0). Build failed.\n", .{ratio});
-        std.process.exit(1);
-    }
+}
 
-    std.debug.print("Writing index to {s}...\n", .{output_path});
-<<<<<<< Updated upstream
-    try writeIndex(init, output_path, centroids, clusters, vectors.items, labels.items);
-=======
-    try writeIndex(init, output_path, centroids, clusters, vectors.items, labels.items, k_clusters);
->>>>>>> Stashed changes
-    std.debug.print("Done.\n", .{});
+inline fn getVal(v: Vector16i16, dim: u8) i16 {
+    return v[dim]; // SENTINEL (-10000) sorts to the low end, separating it from real values
+}
+
+// Pack a slice of vector indices into VecBlocks (AoSoA layout)
+fn packBlocks(
+    allocator: std.mem.Allocator,
+    vecs: []const Vector16i16,
+    lbls: []const u8,
+    indices: []const u32,
+    blocks: *std.ArrayListUnmanaged(VecBlock),
+) !void {
+    var i: usize = 0;
+    while (i < indices.len) {
+        var blk: VecBlock = std.mem.zeroes(VecBlock);
+        const lane_count = @min(8, indices.len - i);
+
+        for (0..lane_count) |lane| {
+            const idx = indices[i + lane];
+            const v = &vecs[idx];
+            for (0..16) |d| {
+                blk.dims[d][lane] = v[d];
+            }
+            blk.labels[lane] = lbls[idx];
+        }
+
+        // Pad unused lanes with SENTINEL so they never match
+        for (lane_count..8) |lane| {
+            for (0..16) |d| {
+                blk.dims[d][lane] = SENTINEL;
+            }
+            blk.labels[lane] = 0;
+        }
+
+        blk._pad[0] = @intCast(lane_count); // valid lane count (1..8) stored in _pad[0]
+        try blocks.append(allocator, blk);
+        i += lane_count;
+    }
 }
 
 fn loadVectors(
     init: std.process.Init,
     path: []const u8,
-    vectors: *std.ArrayListUnmanaged(Vector14),
-    labels: *std.ArrayListUnmanaged(bool),
+    vectors: *std.ArrayListUnmanaged(Vector16i16),
+    labels: *std.ArrayListUnmanaged(u8),
 ) !void {
     const allocator = init.gpa;
 
@@ -118,25 +326,10 @@ fn loadVectors(
     defer allocator.free(file_buf);
     var file_reader = file.reader(init.io, file_buf);
 
-<<<<<<< Updated upstream
-    const decomp_buf = try allocator.alloc(u8, 1 << 16);
-    defer allocator.free(decomp_buf);
-    var decomp = std.compress.flate.Decompress.init(&file_reader.interface, .gzip, decomp_buf);
-
-    // Decompress entire file to memory, then parse
-    var aw: std.Io.Writer.Allocating = .init(allocator);
-    _ = try decomp.reader.streamRemaining(&aw.writer);
-    const decompressed = try aw.toOwnedSlice();
-    defer allocator.free(decompressed);
-
-    // Parse JSON using scanner on complete input
-    var scanner = std.json.Scanner.initCompleteInput(allocator, decompressed);
-=======
     const data = if (std.mem.endsWith(u8, path, ".gz")) blk: {
         const decomp_buf = try allocator.alloc(u8, 1 << 16);
         defer allocator.free(decomp_buf);
         var decomp = std.compress.flate.Decompress.init(&file_reader.interface, .gzip, decomp_buf);
-
         var aw: std.Io.Writer.Allocating = .init(allocator);
         _ = try decomp.reader.streamRemaining(&aw.writer);
         break :blk try aw.toOwnedSlice();
@@ -147,15 +340,12 @@ fn loadVectors(
     };
     defer allocator.free(data);
 
-    // Parse JSON using scanner on complete input
     var scanner = std.json.Scanner.initCompleteInput(allocator, data);
->>>>>>> Stashed changes
     defer scanner.deinit();
 
     try vectors.ensureTotalCapacity(allocator, 3_100_000);
     try labels.ensureTotalCapacity(allocator, 3_100_000);
 
-    // State machine: [ {vector:[f,f,...], label:"fraud"|"legit"} , ... ]
     var tok = try scanner.next();
     if (tok != .array_begin) return error.BadJson;
 
@@ -164,26 +354,24 @@ fn loadVectors(
         if (tok == .array_end) break;
         if (tok != .object_begin) return error.BadJson;
 
-        var vec: [14]f32 = undefined;
+        var vec_f32: [14]f32 = undefined;
         var is_fraud: bool = false;
         var got_vector = false;
         var got_label = false;
 
-        // Read key-value pairs
         while (true) {
             const key_tok = try scanner.next();
             if (key_tok == .object_end) break;
 
             const key = switch (key_tok) {
                 .string => |s| s,
-                .partial_string => return error.BadJson,
                 else => return error.BadJson,
             };
 
             if (std.mem.eql(u8, key, "vector")) {
                 const arr_tok = try scanner.next();
                 if (arr_tok != .array_begin) return error.BadJson;
-                for (&vec) |*f| {
+                for (&vec_f32) |*f| {
                     const num_tok = try scanner.nextAlloc(allocator, .alloc_if_needed);
                     switch (num_tok) {
                         .number => |s| f.* = try std.fmt.parseFloat(f32, s),
@@ -215,194 +403,50 @@ fn loadVectors(
 
         if (!got_vector or !got_label) return error.MissingFields;
 
-        try vectors.append(allocator, vec);
-        try labels.append(allocator, is_fraud);
+        // Quantize f32 → i16
+        var v: Vector16i16 = [_]i16{0} ** 16;
+        for (0..14) |i| {
+            v[i] = if (vec_f32[i] < -0.5)
+                SENTINEL
+            else
+                @intCast(@min(10000, @max(-9999, @as(i32, @intFromFloat(@round(vec_f32[i] * 10000.0))))));
+        }
+
+        try vectors.append(allocator, v);
+        try labels.append(allocator, if (is_fraud) 1 else 0);
     }
-}
-
-<<<<<<< Updated upstream
-fn runKMeans(allocator: std.mem.Allocator, vecs: []const Vector14) ![]Vector14 {
-    var centroids = try allocator.alloc(Vector14, K);
-=======
-fn runKMeans(allocator: std.mem.Allocator, vecs: []const Vector14, k_clusters: usize) ![]Vector14 {
-    var centroids = try allocator.alloc(Vector14, k_clusters);
->>>>>>> Stashed changes
-
-    var rng = std.Random.DefaultPrng.init(0xdeadbeefcafe1337);
-    const random = rng.random();
-
-    // K-means++ initialization
-    centroids[0] = vecs[random.uintAtMost(usize, vecs.len - 1)];
-
-    var min_dists = try allocator.alloc(f32, vecs.len);
-    defer allocator.free(min_dists);
-    @memset(min_dists, std.math.floatMax(f32));
-
-<<<<<<< Updated upstream
-    for (1..K) |k| {
-=======
-    for (1..k_clusters) |k| {
->>>>>>> Stashed changes
-        // Update min distances using the newly added centroid
-        var total: f64 = 0;
-        for (vecs, 0..) |v, vi| {
-            const d = l2dist(v, centroids[k - 1]);
-            if (d < min_dists[vi]) min_dists[vi] = d;
-            total += min_dists[vi];
-        }
-
-        // Sample proportional to distance squared
-        var target = random.float(f64) * total;
-        var chosen: usize = vecs.len - 1;
-        for (0..vecs.len) |vi| {
-            target -= min_dists[vi];
-            if (target <= 0) {
-                chosen = vi;
-                break;
-            }
-        }
-        centroids[k] = vecs[chosen];
-    }
-
-    // K-means iterations
-    var assignments = try allocator.alloc(u32, vecs.len);
-    defer allocator.free(assignments);
-
-    for (0..ITERATIONS) |iter| {
-        std.debug.print("  iter {d}/{d}\r", .{ iter + 1, ITERATIONS });
-
-        // Assignment step
-        for (vecs, 0..) |v, vi| {
-            var best_d: f32 = std.math.floatMax(f32);
-            var best_k: u32 = 0;
-<<<<<<< Updated upstream
-            for (centroids, 0..) |c, ki| {
-                const d = l2dist(v, c);
-=======
-            for (0..k_clusters) |ki| {
-                const d = l2dist(v, centroids[ki]);
->>>>>>> Stashed changes
-                if (d < best_d) {
-                    best_d = d;
-                    best_k = @intCast(ki);
-                }
-            }
-            assignments[vi] = best_k;
-        }
-
-        // Update step (accumulate in f64 to avoid overflow)
-<<<<<<< Updated upstream
-        var accums = try allocator.alloc(@Vector(14, f64), K);
-        defer allocator.free(accums);
-        @memset(accums, @splat(0.0));
-
-        var counts = try allocator.alloc(u64, K);
-=======
-        var accums = try allocator.alloc(@Vector(14, f64), k_clusters);
-        defer allocator.free(accums);
-        @memset(accums, @splat(0.0));
-
-        var counts = try allocator.alloc(u64, k_clusters);
->>>>>>> Stashed changes
-        defer allocator.free(counts);
-        @memset(counts, 0);
-
-        for (vecs, 0..) |v, vi| {
-            const ki = assignments[vi];
-            accums[ki] += @as(@Vector(14, f64), @floatCast(v));
-            counts[ki] += 1;
-        }
-
-<<<<<<< Updated upstream
-        for (0..K) |ki| {
-=======
-        for (0..k_clusters) |ki| {
->>>>>>> Stashed changes
-            if (counts[ki] > 0) {
-                const n: @Vector(14, f64) = @splat(@floatFromInt(counts[ki]));
-                centroids[ki] = @floatCast(accums[ki] / n);
-            }
-        }
-    }
-    std.debug.print("\n", .{});
-
-    return centroids;
 }
 
 fn writeIndex(
     init: std.process.Init,
     path: []const u8,
-    centroids: []const Vector14,
-    clusters: []const std.ArrayListUnmanaged(u32),
-    vecs: []const Vector14,
-    lbls: []const bool,
-<<<<<<< Updated upstream
-=======
-    k_clusters: usize,
->>>>>>> Stashed changes
+    partitions: *const [256]PartitionEntry,
+    nodes: []const KDNode,
+    blocks: []const VecBlock,
+    n_vectors: u32,
 ) !void {
     const allocator = init.gpa;
 
     const file = try std.Io.Dir.cwd().createFile(init.io, path, .{});
     defer file.close(init.io);
 
-    const write_buf = try allocator.alloc(u8, 1 << 16);
+    const write_buf = try allocator.alloc(u8, 1 << 20); // 1MB write buffer
     defer allocator.free(write_buf);
     var fw = file.writer(init.io, write_buf);
     const w = &fw.interface;
 
-    const header = IndexHeader{
-        .version = 2, // version 2 = f16 vector storage
-        .n_vectors = @intCast(vecs.len),
-<<<<<<< Updated upstream
-        .n_centroids = K,
-=======
-        .n_centroids = @intCast(k_clusters),
->>>>>>> Stashed changes
-        .nprobe = 15,
+    const header = SpecialistHeader{
+        .n_vectors = n_vectors,
+        .n_nodes = @intCast(nodes.len),
+        .n_blocks = @intCast(blocks.len),
     };
     try w.writeAll(std.mem.asBytes(&header));
-
-    // Centroids (f32)
-    for (centroids) |c| {
-        const arr: [14]f32 = c;
-        try w.writeAll(std.mem.asBytes(&arr));
-    }
-
-    // Cluster offsets
-    var offset: u32 = 0;
-    for (clusters) |c| {
-        var buf: [4]u8 = undefined;
-        std.mem.writeInt(u32, &buf, offset, .little);
-        try w.writeAll(&buf);
-        offset += @intCast(c.items.len);
-    }
-    // Final sentinel offset
-    var buf: [4]u8 = undefined;
-    std.mem.writeInt(u32, &buf, offset, .little);
-    try w.writeAll(&buf);
-
-    // Vectors ordered by cluster, stored as f16
-    for (clusters) |c| {
-        for (c.items) |idx| {
-            const arr: [14]f32 = vecs[idx];
-            var q: [14]f16 = undefined;
-            for (0..14) |di| q[di] = @floatCast(arr[di]);
-            try w.writeAll(std.mem.asBytes(&q));
-        }
-    }
-
-    // Labels ordered by cluster
-    for (clusters) |c| {
-        for (c.items) |idx| {
-            try w.writeByte(if (lbls[idx]) 1 else 0);
-        }
-    }
-
+    try w.writeAll(std.mem.sliceAsBytes(partitions));
+    try w.writeAll(std.mem.sliceAsBytes(nodes));
+    try w.writeAll(std.mem.sliceAsBytes(blocks));
     try w.flush();
-}
 
-fn l2dist(a: Vector14, b: Vector14) f32 {
-    const diff = a - b;
-    return @reduce(.Add, diff * diff);
+    const index_size = @sizeOf(SpecialistHeader) + 256 * @sizeOf(PartitionEntry) +
+        nodes.len * @sizeOf(KDNode) + blocks.len * @sizeOf(VecBlock);
+    std.debug.print("Index size: {d:.1} MB\n", .{@as(f64, @floatFromInt(index_size)) / (1024.0 * 1024.0)});
 }

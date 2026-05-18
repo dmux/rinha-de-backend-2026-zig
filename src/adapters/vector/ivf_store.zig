@@ -25,10 +25,11 @@ pub const IvfStore = struct {
         const stat = try file.stat(io);
         const size = stat.size;
 
-        // Use direct linux mmap syscall to avoid std library issues
-        // PROT_READ=1, MAP_PRIVATE=2
-        const mmap_res = linux.syscall6(.mmap, 0, size, 1, 2, @as(usize, @bitCast(@as(isize, file.handle))), 0);
+        // PROT_READ=1, MAP_PRIVATE=2, MAP_POPULATE=0x8000 — preload all pages at mmap time
+        const mmap_res = linux.syscall6(.mmap, 0, size, 1, 2 | 0x8000, @as(usize, @bitCast(@as(isize, file.handle))), 0);
         const mmap_ptr: [*]align(4096) u8 = @ptrFromInt(mmap_res);
+        // MADV_WILLNEED=3 — hint kernel to keep pages warm in page cache
+        _ = linux.syscall3(.madvise, mmap_res, size, 3);
         const mmap_data = mmap_ptr[0..size];
 
         var pos: usize = 0;
@@ -82,10 +83,20 @@ pub const IvfStore = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn search(ptr: *anyopaque, query: Vector14, results: []SearchResult, nprobe_opt: ?u32) !usize {
+    pub fn search(ptr: *anyopaque, query_i16: types.Vector16i16, results: []SearchResult) !usize {
         const self: *IvfStore = @ptrCast(@alignCast(ptr));
         const k = results.len;
-        const nprobe = nprobe_opt orelse self.header.nprobe;
+        const nprobe = self.header.nprobe;
+
+        // Dequantize i16 → f32 for legacy IVF search
+        var query_f32: [14]f32 = undefined;
+        for (0..14) |i| {
+            query_f32[i] = if (query_i16[i] == types.SENTINEL)
+                -1.0
+            else
+                @as(f32, @floatFromInt(query_i16[i])) / @as(f32, @floatFromInt(types.SCALE));
+        }
+        const query: Vector14 = query_f32;
 
         // Find top nprobe clusters
         var top: [1000]struct { dist: f32, cid: u32 } = undefined;
@@ -175,12 +186,6 @@ pub const IvfStore = struct {
     }
 
     pub fn vectorStore(self: *IvfStore) vector_store.VectorStore {
-        return .{
-            .ptr = self,
-            .vtable = &.{
-                .search = IvfStore.search,
-                .deinit = IvfStore.deinit,
-            },
-        };
+        return .{ .ptr = self, .vtable = &.{ .search = IvfStore.search, .deinit = IvfStore.deinit } };
     }
 };
